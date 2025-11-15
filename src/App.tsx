@@ -29,7 +29,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <ShaderBackground />
+        <div className="fixed inset-0 w-full h-full -z-10">
+          <ShaderBackground />
+        </div>
         <Navigation />
         <Routes>
           <Route path="/" element={<Home />} />
