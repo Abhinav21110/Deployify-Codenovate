@@ -8,6 +8,7 @@ interface ProviderSelectionOptions {
   budget: 'free' | 'low' | 'any';
   preferProviders?: string[];
   maxFileSize?: number;
+  availableProviders?: string[]; // Add this to pass available providers
 }
 
 interface DeploymentOptions {
@@ -24,41 +25,9 @@ export class ProviderDecisionService {
   constructor(private readonly providerRegistry: ProviderRegistryService) {}
 
   async selectProvider(options: ProviderSelectionOptions): Promise<string> {
-    const { analysis, preferProviders } = options;
-
-    try {
-      // Simplified provider selection for Netlify and Vercel only
-      
-      // User preference takes priority
-      if (preferProviders && preferProviders.length > 0) {
-        const preferred = preferProviders[0];
-        if (preferred === 'netlify' || preferred === 'vercel') {
-          this.logger.log(`Selected user-preferred provider: ${preferred}`);
-          return preferred;
-        }
-      }
-
-      // Smart defaults based on project type
-      // Next.js projects work best on Vercel (made by Vercel team)
-      if (analysis.framework === 'next' || analysis.type === 'next') {
-        this.logger.log('Selected provider: vercel for Next.js project');
-        return 'vercel';
-      }
-
-      // Static HTML projects work great on Netlify
-      if (analysis.isStaticHtml || analysis.type === 'static') {
-        this.logger.log('Selected provider: netlify for static project');
-        return 'netlify';
-      }
-
-      // Default to Vercel for SPAs (React, Vue, etc.)
-      this.logger.log(`Selected provider: vercel for ${analysis.type} project`);
-      return 'vercel';
-    } catch (error) {
-      this.logger.error('Provider selection failed:', error);
-      // Default fallback to Vercel
-      return 'vercel';
-    }
+    // Forcing Netlify to fulfill user request.
+    this.logger.log('Forcing provider selection to: netlify');
+    return 'netlify';
   }
 
   async getProviderRecommendations(

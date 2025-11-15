@@ -143,6 +143,14 @@ export class DeploymentWorker {
 
       let selectedProvider = provider; // Use explicitly provided provider
       if (!selectedProvider) {
+        // Check available providers first
+        const netlifyCredentials = await this.credentialService.getFirstCredentialForProvider('netlify');
+        const vercelCredentials = await this.credentialService.getFirstCredentialForProvider('vercel');
+        const availableProviders = [];
+        
+        if (netlifyCredentials) availableProviders.push('netlify');
+        if (vercelCredentials) availableProviders.push('vercel');
+
         // Auto-select provider based on project analysis
         selectedProvider = await this.providerDecisionService.selectProvider({
           analysis: projectAnalysis,
@@ -150,6 +158,7 @@ export class DeploymentWorker {
           budget,
           preferProviders,
           maxFileSize: projectAnalysis.estimatedSize,
+          availableProviders,
         });
       }
 
