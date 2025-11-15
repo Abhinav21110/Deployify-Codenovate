@@ -91,6 +91,22 @@ export class DeploymentController {
     return { message: 'Deployment cancelled successfully' };
   }
 
+  @Post(':id/delete')
+  @ApiOperation({ summary: 'Delete a deployment' })
+  @ApiResponse({
+    status: 200,
+    description: 'Deployment deleted successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Deployment not found',
+  })
+  @HttpCode(HttpStatus.OK)
+  async deleteDeployment(@Param('id') id: string): Promise<{ message: string }> {
+    await this.deploymentService.deleteDeployment(id);
+    return { message: 'Deployment deleted successfully' };
+  }
+
   @Get(':id/logs/sse')
   @ApiOperation({ summary: 'Stream deployment logs via Server-Sent Events' })
   @Sse()

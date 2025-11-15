@@ -137,6 +137,25 @@ export class DeploymentService {
     });
   }
 
+  async deleteDeployment(id: string): Promise<void> {
+    const deployment = await this.deploymentRepository.findOne({
+      where: { id },
+    });
+
+    if (!deployment) {
+      throw new NotFoundException(`Deployment ${id} not found`);
+    }
+
+    // Cancel the deployment first if it's active
+    const activeStatuses = ['queued', 'cloning', 'building', 'deploying'];
+    if (activeStatuses.includes(deployment.status)) {
+      await this.cancelDeployment(id);
+    }
+
+    // Remove deployment record from database
+    await this.deploymentRepository.remove(deployment);
+  }
+
   async listDeployments(query: DeploymentListQuery): Promise<DeploymentListResponse> {
     const { page = 1, limit = 20, status, provider } = query;
     const offset = (page - 1) * limit;

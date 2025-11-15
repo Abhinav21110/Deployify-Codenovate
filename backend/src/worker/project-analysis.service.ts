@@ -61,6 +61,18 @@ export class ProjectAnalysisService {
       // Check for specific framework files
       await this.detectFrameworkFromFiles(projectPath, analysis);
 
+      // Re-detect build directory after framework files check (in case framework was updated)
+      if (analysis.hasPackageJson) {
+        const packageJsonPath = path.join(projectPath, 'package.json');
+        try {
+          const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
+          const packageJson = JSON.parse(packageJsonContent);
+          analysis.buildDirectory = this.detectBuildDirectory(packageJson, analysis.framework);
+        } catch (error) {
+          // Silently continue if re-reading fails
+        }
+      }
+
       // Calculate estimated project size
       analysis.estimatedSize = await this.calculateProjectSize(projectPath);
 

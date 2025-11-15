@@ -204,6 +204,12 @@ class ApiClient {
     });
   }
 
+  async deleteDeployment(id: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/deploy/${id}/delete`, {
+      method: 'POST',
+    });
+  }
+
   async getDeployments(
     page: number = 1,
     limit: number = 20,

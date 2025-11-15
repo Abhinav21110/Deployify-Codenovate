@@ -191,4 +191,22 @@ export class CredentialController {
       return { error: error.message };
     }
   }
+
+  /**
+   * Clear invalid credentials (useful when encryption key changes)
+   */
+  @Post('clear-invalid')
+  async clearInvalidCredentials() {
+    try {
+      const userId = 'demo-user';
+      await this.credentialService.clearInvalidCredentials(userId);
+      
+      return {
+        message: 'Invalid credentials cleared successfully. Please re-add your provider credentials.',
+      };
+    } catch (error) {
+      this.logger.error('Failed to clear invalid credentials:', error);
+      return { error: error.message };
+    }
+  }
 }

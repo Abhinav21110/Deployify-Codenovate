@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CheckCircle, Clock, GitBranch, Globe, AlertCircle, ExternalLink, Eye, Search, RefreshCw, X, Plus, Settings, Key, Monitor } from 'lucide-react';
+import { CheckCircle, Clock, GitBranch, Globe, AlertCircle, ExternalLink, Eye, Search, RefreshCw, X, Plus, Settings, Key, Monitor, Trash2, StopCircle } from 'lucide-react';
 import { apiClient, queryKeys, DeploymentStatus } from '@/lib/api';
 import { useBlurReveal } from '@/hooks/useBlurReveal';
 import { toast } from 'sonner';
@@ -34,6 +34,30 @@ function DeploymentsPage() {
   const [selectedDeployment, setSelectedDeployment] = useState<DeploymentStatus | null>(null);
 
   const queryClient = useQueryClient();
+
+  // Cancel deployment mutation
+  const cancelMutation = useMutation({
+    mutationFn: (deploymentId: string) => apiClient.cancelDeployment(deploymentId),
+    onSuccess: (data, deploymentId) => {
+      toast.success('Deployment cancelled successfully!');
+      queryClient.invalidateQueries({ queryKey: queryKeys.deployments(1) });
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to cancel deployment: ${error.message}`);
+    },
+  });
+
+  // Delete deployment mutation
+  const deleteMutation = useMutation({
+    mutationFn: (deploymentId: string) => apiClient.deleteDeployment(deploymentId),
+    onSuccess: (data, deploymentId) => {
+      toast.success('Deployment deleted successfully!');
+      queryClient.invalidateQueries({ queryKey: queryKeys.deployments(1) });
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to delete deployment: ${error.message}`);
+    },
+  });
 
   // Fetch deployments from API
   const { data: deploymentsData, isLoading, error, refetch } = useQuery({
@@ -71,6 +95,18 @@ function DeploymentsPage() {
 
   const handleViewDeployment = (deployment: DeploymentStatus) => {
     setSelectedDeployment(deployment);
+  };
+
+  const handleCancelDeployment = (deploymentId: string) => {
+    if (window.confirm('Are you sure you want to cancel this deployment?')) {
+      cancelMutation.mutate(deploymentId);
+    }
+  };
+
+  const handleDeleteDeployment = (deploymentId: string) => {
+    if (window.confirm('Are you sure you want to delete this deployment? This action cannot be undone.')) {
+      deleteMutation.mutate(deploymentId);
+    }
   };
 
   const isDeploymentActive = (status: string) => {
@@ -275,6 +311,34 @@ function DeploymentsPage() {
                               View
                             </Button>
                             
+                            {/* Cancel button for active deployments */}
+                            {isActive && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCancelDeployment(deployment.id)}
+                                disabled={cancelMutation.isLoading}
+                                className="glass-card border-red-500/20 text-red-400 hover:bg-red-900/10"
+                              >
+                                <StopCircle className="h-3 w-3 mr-1" />
+                                {cancelMutation.isLoading ? 'Cancelling...' : 'Cancel'}
+                              </Button>
+                            )}
+                            
+                            {/* Delete button for completed/failed/cancelled deployments */}
+                            {!isActive && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteDeployment(deployment.id)}
+                                disabled={deleteMutation.isLoading}
+                                className="glass-card border-red-500/20 text-red-400 hover:bg-red-900/10"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                {deleteMutation.isLoading ? 'Deleting...' : 'Delete'}
+                              </Button>
+                            )}
+                            
                             {deployment.url && (
                               <Button 
                                 variant="outline" 
@@ -330,8 +394,47 @@ function DeploymentsPage() {
                   </Badge>
                 )}
               </DialogTitle>
-              <DialogDescription>
-                {selectedDeployment?.id} • {selectedDeployment?.provider}
+              <DialogDescription className="flex items-center justify-between">
+                <span>
+                  {selectedDeployment?.id} • {selectedDeployment?.provider}
+                </span>
+                {selectedDeployment && (
+                  <div className="flex items-center gap-2">
+                    {/* Cancel button for active deployments */}
+                    {isDeploymentActive(selectedDeployment.status) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          handleCancelDeployment(selectedDeployment.id);
+                          setSelectedDeployment(null);
+                        }}
+                        disabled={cancelMutation.isLoading}
+                        className="border-red-500/20 text-red-400 hover:bg-red-900/10"
+                      >
+                        <StopCircle className="h-3 w-3 mr-1" />
+                        {cancelMutation.isLoading ? 'Cancelling...' : 'Cancel'}
+                      </Button>
+                    )}
+                    
+                    {/* Delete button for completed/failed/cancelled deployments */}
+                    {!isDeploymentActive(selectedDeployment.status) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          handleDeleteDeployment(selectedDeployment.id);
+                          setSelectedDeployment(null);
+                        }}
+                        disabled={deleteMutation.isLoading}
+                        className="border-red-500/20 text-red-400 hover:bg-red-900/10"
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        {deleteMutation.isLoading ? 'Deleting...' : 'Delete'}
+                      </Button>
+                    )}
+                  </div>
+                )}
               </DialogDescription>
             </DialogHeader>
 

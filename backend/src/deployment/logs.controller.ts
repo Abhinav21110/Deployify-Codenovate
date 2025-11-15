@@ -116,6 +116,11 @@ export class LogsController {
       this.logger.error(`Failed to get log summary for deployment ${deploymentId}:`, error);
       return {
         deploymentId,
+        totalLogs: 0,
+        errorCount: 0,
+        warningCount: 0,
+        infoCount: 0,
+        successCount: 0,
         error: error.message,
       };
     }

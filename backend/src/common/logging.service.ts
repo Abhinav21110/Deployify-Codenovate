@@ -49,11 +49,15 @@ export class LoggingService {
     }
     this.deploymentLogs.get(deploymentId)!.push(log);
 
-    // Persist to file
-    await this.persistLog(deploymentId, log);
+    // Persist to file (async, don't block)
+    this.persistLog(deploymentId, log).catch(error => {
+      this.logger.error(`Failed to persist log for deployment ${deploymentId}:`, error);
+    });
 
-    // Notify subscribers (for real-time streaming)
+    // Notify subscribers immediately (for real-time streaming)
     this.notifySubscribers(deploymentId, log);
+
+    this.logger.debug(`Added log for deployment ${deploymentId}: ${level} - ${message}`);
 
     this.logger.debug(`[${deploymentId}] ${level.toUpperCase()}: ${message}`);
   }
@@ -146,7 +150,10 @@ export class LoggingService {
 
     // Calculate duration if we have start and end times
     if (summary.startTime && summary.endTime) {
-      summary['duration'] = summary.endTime.getTime() - summary.startTime.getTime();
+      // Ensure timestamps are Date objects (they might be strings when loaded from JSON)
+      const startTime = summary.startTime instanceof Date ? summary.startTime : new Date(summary.startTime);
+      const endTime = summary.endTime instanceof Date ? summary.endTime : new Date(summary.endTime);
+      summary['duration'] = endTime.getTime() - startTime.getTime();
     }
 
     return summary;
@@ -237,14 +244,17 @@ export class LoggingService {
 
   private notifySubscribers(deploymentId: string, log: DeploymentLog): void {
     const subscribers = this.logSubscribers.get(deploymentId);
-    if (subscribers) {
-      subscribers.forEach(callback => {
+    if (subscribers && subscribers.length > 0) {
+      this.logger.debug(`Notifying ${subscribers.length} subscribers for deployment ${deploymentId}`);
+      subscribers.forEach((callback, index) => {
         try {
           callback(log);
         } catch (error) {
-          this.logger.error('Error notifying log subscriber:', error);
+          this.logger.error(`Error notifying log subscriber ${index} for deployment ${deploymentId}:`, error);
         }
       });
+    } else {
+      this.logger.debug(`No subscribers found for deployment ${deploymentId}`);
     }
   }
 

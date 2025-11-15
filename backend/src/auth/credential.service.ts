@@ -25,7 +25,12 @@ export class CredentialService {
     private providerDecisionService: ProviderDecisionService,
     private configService: ConfigService,
   ) {
-    this.encryptionKey = this.configService.get<string>('ENCRYPTION_KEY') || this.generateEncryptionKey();
+    // Use environment variable or a fixed development key
+    this.encryptionKey = this.configService.get<string>('ENCRYPTION_KEY') || 'deployify-dev-key-32-chars-long-fixed';
+    
+    if (!this.configService.get<string>('ENCRYPTION_KEY')) {
+      this.logger.warn('Using default development encryption key. Set ENCRYPTION_KEY environment variable for production.');
+    }
   }
 
   /**
@@ -320,6 +325,33 @@ export class CredentialService {
   /**
    * Validate all credentials for a user
    */
+  async clearInvalidCredentials(userId: string): Promise<void> {
+    this.logger.log(`Clearing invalid credentials for user: ${userId}`);
+    
+    const credentials = await this.credentialRepository.find({
+      where: { userId },
+    });
+
+    const invalidCredentials = [];
+    
+    for (const credential of credentials) {
+      try {
+        // Try to decrypt to check if credential is valid
+        this.decrypt(credential.encryptedCredentials);
+      } catch (error) {
+        this.logger.warn(`Credential ${credential.id} is invalid:`, error.message);
+        invalidCredentials.push(credential);
+      }
+    }
+    
+    if (invalidCredentials.length > 0) {
+      await this.credentialRepository.remove(invalidCredentials);
+      this.logger.log(`Cleared ${invalidCredentials.length} invalid credentials`);
+    } else {
+      this.logger.log('No invalid credentials found');
+    }
+  }
+
   async validateAllUserCredentials(userId: string): Promise<void> {
     try {
       const credentials = await this.credentialRepository.find({
@@ -375,17 +407,26 @@ export class CredentialService {
   }
 
   private decrypt(encryptedText: string): string {
-    const parts = encryptedText.split(':');
-    const iv = Buffer.from(parts[0], 'hex');
-    const encrypted = parts[1];
-    
-    const key = crypto.scryptSync(this.encryptionKey, 'salt', 32);
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    
-    return decrypted;
+    try {
+      const parts = encryptedText.split(':');
+      if (parts.length !== 2) {
+        throw new Error('Invalid encrypted data format');
+      }
+      
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      
+      const key = crypto.scryptSync(this.encryptionKey, 'salt', 32);
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+      
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      
+      return decrypted;
+    } catch (error) {
+      this.logger.error('Failed to decrypt credentials:', error.message);
+      throw new Error('Credential decryption failed. This usually happens when the encryption key has changed.');
+    }
   }
 
   private generateEncryptionKey(): string {
