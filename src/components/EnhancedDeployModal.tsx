@@ -135,8 +135,8 @@ export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto glass-card-strong">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Cloud className="h-5 w-5" />
@@ -150,7 +150,7 @@ export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-3 glass-card-subtle">
                 <TabsTrigger value="basic">Basic Settings</TabsTrigger>
                 <TabsTrigger value="provider">Provider & Credentials</TabsTrigger>
                 <TabsTrigger value="advanced">Advanced Config</TabsTrigger>
@@ -168,6 +168,7 @@ export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
                       value={formData.repoUrl}
                       onChange={(e) => setFormData({ ...formData, repoUrl: e.target.value })}
                       required
+                      className="glass-input"
                     />
                   </div>
 
@@ -179,6 +180,7 @@ export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
                         placeholder="main"
                         value={formData.branch}
                         onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
+                        className="glass-input"
                       />
                     </div>
 

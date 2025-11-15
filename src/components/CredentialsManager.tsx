@@ -314,7 +314,7 @@ export const CredentialsManager: React.FC = () => {
       {/* Existing Credentials */}
       <div className="grid gap-4">
         {loadingCredentials ? (
-          <Card>
+          <Card className="glass-card-subtle">
             <CardContent className="flex items-center justify-center py-8">
               <div className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -323,21 +323,21 @@ export const CredentialsManager: React.FC = () => {
             </CardContent>
           </Card>
         ) : credentials.length === 0 ? (
-          <Card>
+          <Card className="glass-card">
             <CardContent className="flex flex-col items-center justify-center py-8">
               <Key className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No Credentials Found</h3>
               <p className="text-muted-foreground text-center mb-4">
                 Add provider credentials to enable deployments to external platforms
               </p>
-              <Button onClick={() => setIsCreateOpen(true)}>
+              <Button onClick={() => setIsCreateOpen(true)} className="glass-button">
                 Add Your First Credentials
               </Button>
             </CardContent>
           </Card>
         ) : (
           credentials.map((credential) => (
-            <Card key={credential.id}>
+            <Card key={credential.id} className="glass-card card-hover">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
