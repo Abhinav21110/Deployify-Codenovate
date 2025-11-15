@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend Connection Test</title>
+</head>
+<body>
+    <h1>Backend Connection Test</h1>
+    <button onclick="testHealth()">Test Health Endpoint</button>
+    <button onclick="testDeploy()">Test Deploy Endpoint</button>
+    <div id="results"></div>
+
+    <script>
+        async function testHealth() {
+            const results = document.getElementById('results');
+            results.innerHTML = 'Testing health endpoint...';
+            
+            try {
+                const response = await fetch('http://localhost:3001/health');
+                const data = await response.json();
+                results.innerHTML = `<p style="color: green;">Health OK: ${JSON.stringify(data)}</p>`;
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">Health Error: ${error.message}</p>`;
+            }
+        }
+
+        async function testDeploy() {
+            const results = document.getElementById('results');
+            results.innerHTML = 'Testing deploy endpoint...';
+            
+            try {
+                const response = await fetch('http://localhost:3001/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        test: 'connection test'
+                    })
+                });
+                const data = await response.json();
+                results.innerHTML = `<p style="color: green;">Deploy Test OK: ${JSON.stringify(data)}</p>`;
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">Deploy Test Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

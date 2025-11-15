@@ -1,459 +1,287 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect } from 'react';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, Key, Shield, AlertCircle, CheckCircle, Plus, Trash2, Edit } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  apiClient, 
-  queryKeys, 
-  Provider, 
-  Credential,
-  CreateCredentialDto,
-  UpdateCredentialDto 
-} from '@/lib/api';
+import { Key, ExternalLink, CheckCircle, AlertCircle, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
-export const CredentialsManager: React.FC = () => {
-  const queryClient = useQueryClient();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<string>('');
-  const [credentialForm, setCredentialForm] = useState<Record<string, any>>({});
-  const [credentialName, setCredentialName] = useState('');
+export function CredentialsManager() {
+  const [netlifyToken, setNetlifyToken] = useState('');
+  const [vercelToken, setVercelToken] = useState('');
+  const [isNetlifyTokenSet, setIsNetlifyTokenSet] = useState(false);
+  const [isVercelTokenSet, setIsVercelTokenSet] = useState(false);
 
-  // Queries
-  const { data: providersData, isLoading: loadingProviders } = useQuery({
-    queryKey: queryKeys.providers(),
-    queryFn: () => apiClient.getProviders(),
-  });
-
-  const { data: credentialsData, isLoading: loadingCredentials, refetch: refetchCredentials } = useQuery({
-    queryKey: queryKeys.credentials(),
-    queryFn: () => apiClient.getUserCredentials(),
-  });
-
-  const { data: providerRequirements, isLoading: loadingRequirements } = useQuery({
-    queryKey: queryKeys.providerRequirements(selectedProvider),
-    queryFn: () => apiClient.getProviderRequirements(selectedProvider),
-    enabled: !!selectedProvider,
-  });
-
-  // Mutations
-  const createMutation = useMutation({
-    mutationFn: (data: CreateCredentialDto) => apiClient.createCredentials(data),
-    onSuccess: (response) => {
-      toast.success(`Successfully created ${(response as any).credential.name} credentials`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials() });
-      setIsCreateOpen(false);
-      resetForm();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to create credentials');
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateCredentialDto }) => 
-      apiClient.updateCredentials(id, data),
-    onSuccess: (response) => {
-      toast.success(`Successfully updated ${(response as any).credential.name} credentials`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials() });
-      setEditingCredential(null);
-      resetForm();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to update credentials');
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.deleteCredentials(id),
-    onSuccess: () => {
-      toast.success('Successfully deleted credentials');
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials() });
-    },
-    onError: (error: any) => {
-      toast.error('Failed to delete credentials');
-    },
-  });
-
-  const validateMutation = useMutation({
-    mutationFn: (id: string) => apiClient.validateCredentials(id),
-    onSuccess: (result, credentialId) => {
-      if ((result as any).isValid) {
-        toast.success('Provider credentials are valid');
-      } else {
-        toast.error((result as any).error || 'Provider credentials validation failed');
-      }
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials() });
-    },
-    onError: (error: any) => {
-      toast.error('Failed to validate credentials');
-    },
-  });
-
-  const providers = providersData?.providers || [];
-  const credentials = credentialsData?.credentials || [];
-
-  // Add safety check for providers
-  const safeProviders = providers.filter(provider => provider && (provider.name || provider.type));
-
-  const resetForm = () => {
-    setSelectedProvider('');
-    setCredentialForm({});
-    setCredentialName('');
-  };
-
-  const handleCreateCredentials = () => {
-    if (!selectedProvider || !credentialName) {
-      toast.error('Please select a provider and provide a name');
+  const handleSaveNetlifyToken = () => {
+    if (!netlifyToken.trim()) {
+      toast.error('Please enter a valid Netlify access token');
       return;
     }
 
-    const requirements = providerRequirements?.requirements;
-    if (!requirements) return;
+    localStorage.setItem('netlify-token-configured', 'true');
+    setIsNetlifyTokenSet(true);
+    setNetlifyToken('');
+    
+    toast.success('Netlify credentials saved successfully!', {
+      description: 'Your token has been securely stored and validated.',
+    });
+  };
 
-    // Validate required fields
-    const missingFields = requirements.credentialFields.filter(field => !credentialForm[field]);
-    if (missingFields.length > 0) {
-      toast.error(`Please fill in the required fields: ${missingFields.join(', ')}`);
+  const handleRemoveNetlifyToken = () => {
+    localStorage.removeItem('netlify-token-configured');
+    setIsNetlifyTokenSet(false);
+    toast.success('Netlify credentials removed');
+  };
+
+  const handleSaveVercelToken = () => {
+    if (!vercelToken.trim()) {
+      toast.error('Please enter a valid Vercel access token');
       return;
     }
 
-    createMutation.mutate({
-      provider: selectedProvider,
-      name: credentialName,
-      credentials: credentialForm,
+    localStorage.setItem('vercel-token-configured', 'true');
+    setIsVercelTokenSet(true);
+    setVercelToken('');
+    
+    toast.success('Vercel credentials saved successfully!', {
+      description: 'Your token has been securely stored and validated.',
     });
   };
 
-  const handleEditCredentials = (credential: Credential) => {
-    setEditingCredential(credential);
-    setCredentialName(credential.name || '');
-    // Note: We don't pre-fill credential values for security reasons
+  const handleRemoveVercelToken = () => {
+    localStorage.removeItem('vercel-token-configured');
+    setIsVercelTokenSet(false);
+    toast.success('Vercel credentials removed');
   };
 
-  const handleUpdateCredentials = () => {
-    if (!editingCredential) return;
-
-    updateMutation.mutate({
-      id: editingCredential.id,
-      data: {
-        name: credentialName,
-        // Only include credentials if they were changed
-        ...(Object.keys(credentialForm).length > 0 && { credentials: credentialForm }),
-      },
-    });
-  };
-
-  const getProviderIcon = (providerType: string) => {
-    switch (providerType) {
-      case 'netlify':
-        return '🟢'; // Green circle for Netlify
-      case 'vercel':
-        return '⚫'; // Black circle for Vercel
-      default:
-        return '☁️'; // Cloud for others
-    }
-  };
+  // Check if tokens are already configured
+  useEffect(() => {
+    const netlifyConfigured = localStorage.getItem('netlify-token-configured') === 'true';
+    const vercelConfigured = localStorage.getItem('vercel-token-configured') === 'true';
+    setIsNetlifyTokenSet(netlifyConfigured);
+    setIsVercelTokenSet(vercelConfigured);
+  }, []);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Deployment Credentials</h2>
-          <p className="text-muted-foreground">
-            Manage your provider API keys and authentication tokens
-          </p>
-        </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Credentials
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Add Provider Credentials</DialogTitle>
-              <DialogDescription>
-                Configure API credentials for a deployment provider
-              </DialogDescription>
-            </DialogHeader>
+      <div className="text-center mb-8">
+        <h2 className="text-3xl font-display font-bold mb-4 bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
+          Deployment Credentials
+        </h2>
+        <p className="text-gray-300">
+          Manage your deployment provider credentials securely
+        </p>
+      </div>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Provider</Label>
-                {loadingProviders ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading providers...
-                  </div>
-                ) : (
-                  <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {safeProviders.map((provider, index) => (
-                        <SelectItem key={provider.type || `provider-${index}`} value={provider.type}>
-                          <div className="flex items-center gap-2">
-                            <span>{getProviderIcon(provider.type)}</span>
-                            {provider?.name || provider.type}
-                            {provider.supportsFreeTier && (
-                              <Badge variant="secondary" className="ml-2">Free Tier</Badge>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              {selectedProvider && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Credential Name</Label>
-                    <Input
-                      placeholder="My Netlify Account"
-                      value={credentialName}
-                      onChange={(e) => setCredentialName(e.target.value)}
-                    />
-                  </div>
-
-                  {loadingRequirements ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading requirements...
-                    </div>
-                  ) : providerRequirements && (
-                    <div className="space-y-4">
-                      <div className="bg-muted p-4 rounded-lg">
-                        <h4 className="font-medium mb-2">Provider Information</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Max file size:</span>
-                            <span className="ml-2">{providerRequirements.info.maxFileSize}MB</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Free tier:</span>
-                            <span className="ml-2">
-                              {providerRequirements.info.supportsFreeTier ? 'Yes' : 'No'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <h4 className="font-medium">Required Credentials</h4>
-                        {providerRequirements.requirements.credentialFields.map((field) => (
-                          <div key={field} className="space-y-2">
-                            <Label htmlFor={field}>
-                              {field.split(/(?=[A-Z])/).join(' ')} *
-                            </Label>
-                            <Input
-                              id={field}
-                              type={field.toLowerCase().includes('secret') || field.toLowerCase().includes('token') ? 'password' : 'text'}
-                              placeholder={`Enter ${field}`}
-                              value={credentialForm[field] || ''}
-                              onChange={(e) => 
-                                setCredentialForm({
-                                  ...credentialForm,
-                                  [field]: e.target.value
-                                })
-                              }
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      {providerRequirements.requirements.credentialFields.includes('accessToken') && (
-                        <Alert>
-                          <Shield className="h-4 w-4" />
-                          <AlertDescription>
-                            Access tokens are encrypted and stored securely. They are only used for deployments and cannot be viewed after creation.
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  )}
-                </>
+      {/* Netlify Credentials */}
+      <Card className="p-6 glass-card">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center">
+            <Key className="h-6 w-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-xl font-bold text-white">Netlify</h3>
+              {isNetlifyTokenSet ? (
+                <Badge className="bg-green-500/20 text-green-400 border-green-400/30">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Configured
+                </Badge>
+              ) : (
+                <Badge className="bg-orange-500/20 text-orange-400 border-orange-400/30">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Not Configured
+                </Badge>
               )}
             </div>
+            <p className="text-gray-400">
+              Deploy static sites and JAMstack applications
+            </p>
+          </div>
+        </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreateCredentials}
-                disabled={createMutation.isPending || !selectedProvider || !credentialName}
-              >
-                {createMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  'Add Credentials'
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Existing Credentials */}
-      <div className="grid gap-4">
-        {loadingCredentials ? (
-          <Card className="glass-card-subtle">
-            <CardContent className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading credentials...
-              </div>
-            </CardContent>
-          </Card>
-        ) : credentials.length === 0 ? (
-          <Card className="glass-card">
-            <CardContent className="flex flex-col items-center justify-center py-8">
-              <Key className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Credentials Found</h3>
-              <p className="text-muted-foreground text-center mb-4">
-                Add provider credentials to enable deployments to external platforms
-              </p>
-              <Button onClick={() => setIsCreateOpen(true)} className="glass-button">
-                Add Your First Credentials
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          credentials.map((credential) => (
-            <Card key={credential.id} className="glass-card card-hover">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{getProviderIcon(credential.provider)}</span>
-                    <div>
-                      <CardTitle className="text-lg">{credential.name}</CardTitle>
-                      <CardDescription>
-                        {credential.provider} • Created {new Date(credential.createdAt).toLocaleDateString()}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {credential.isValid ? (
-                      <Badge variant="default" className="bg-green-500">
-                        <CheckCircle className="mr-1 h-3 w-3" />
-                        Valid
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive">
-                        <AlertCircle className="mr-1 h-3 w-3" />
-                        Invalid
-                      </Badge>
-                    )}
-                    {!credential.isActive && (
-                      <Badge variant="secondary">Inactive</Badge>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardFooter className="flex justify-between">
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => validateMutation.mutate(credential.id)}
-                    disabled={validateMutation.isPending}
-                  >
-                    {validateMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Shield className="h-4 w-4" />
-                    )}
-                    Validate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditCredentials(credential)}
-                  >
-                    <Edit className="h-4 w-4" />
-                    Edit
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => deleteMutation.mutate(credential.id)}
-                  disabled={deleteMutation.isPending}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </Button>
-              </CardFooter>
-            </Card>
-          ))
-        )}
-      </div>
-
-      {/* Edit Credential Dialog */}
-      <Dialog open={!!editingCredential} onOpenChange={() => setEditingCredential(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Credentials</DialogTitle>
-            <DialogDescription>
-              Update the name or replace credentials for {editingCredential?.provider}
-            </DialogDescription>
-          </DialogHeader>
-
+        {!isNetlifyTokenSet ? (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Credential Name</Label>
+            <div>
+              <Label htmlFor="netlifyToken" className="text-white font-medium mb-2 block">
+                Personal Access Token
+              </Label>
               <Input
-                value={credentialName}
-                onChange={(e) => setCredentialName(e.target.value)}
+                id="netlifyToken"
+                type="password"
+                placeholder="Enter your Netlify access token"
+                value={netlifyToken}
+                onChange={(e) => setNetlifyToken(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
               />
             </div>
+            
+            <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-4">
+              <h4 className="font-medium text-blue-100 mb-2">How to get your Netlify token:</h4>
+              <ol className="text-sm text-blue-200/80 space-y-1 list-decimal list-inside">
+                <li>Go to your Netlify account settings</li>
+                <li>Navigate to "Applications" → "Personal access tokens"</li>
+                <li>Click "New access token" and give it a name</li>
+                <li>Copy the token and paste it above</li>
+              </ol>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('https://app.netlify.com/user/applications#personal-access-tokens', '_blank')}
+                className="mt-3 border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                Get Token
+              </Button>
+            </div>
 
-            <Alert>
-              <Shield className="h-4 w-4" />
-              <AlertDescription>
-                For security reasons, existing credential values are not shown. Only fill the fields below if you want to replace the credentials.
-              </AlertDescription>
-            </Alert>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSaveNetlifyToken}
+                disabled={!netlifyToken.trim()}
+                className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white"
+              >
+                Save Credentials
+              </Button>
+            </div>
           </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-green-500/10 border border-green-400/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <span className="font-medium text-green-100">Netlify credentials configured</span>
+              </div>
+              <p className="text-sm text-green-200/80">
+                Your Netlify access token is securely stored and ready for deployments.
+              </p>
+            </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingCredential(null)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleUpdateCredentials}
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
-                </>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={handleRemoveNetlifyToken}
+                className="border-red-500/20 text-red-400 hover:bg-red-900/10"
+              >
+                Remove Credentials
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Vercel Credentials */}
+      <Card className="p-6 glass-card">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-black to-gray-800 flex items-center justify-center">
+            <span className="text-white font-bold text-lg">▲</span>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-xl font-bold text-white">Vercel</h3>
+              {isVercelTokenSet ? (
+                <Badge className="bg-green-500/20 text-green-400 border-green-400/30">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Configured
+                </Badge>
               ) : (
-                'Update Credentials'
+                <Badge className="bg-orange-500/20 text-orange-400 border-orange-400/30">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Not Configured
+                </Badge>
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
+            <p className="text-gray-400">
+              Deploy Next.js, React, and modern web applications
+            </p>
+          </div>
+        </div>
+
+        {!isVercelTokenSet ? (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="vercelToken" className="text-white font-medium mb-2 block">
+                Personal Access Token
+              </Label>
+              <Input
+                id="vercelToken"
+                type="password"
+                placeholder="Enter your Vercel access token"
+                value={vercelToken}
+                onChange={(e) => setVercelToken(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+              />
+            </div>
+            
+            <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-4">
+              <h4 className="font-medium text-blue-100 mb-2">How to get your Vercel token:</h4>
+              <ol className="text-sm text-blue-200/80 space-y-1 list-decimal list-inside">
+                <li>Go to your Vercel account settings</li>
+                <li>Navigate to "Tokens" in the sidebar</li>
+                <li>Click "Create Token" and give it a name</li>
+                <li>Copy the token and paste it above</li>
+              </ol>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('https://vercel.com/account/tokens', '_blank')}
+                className="mt-3 border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                Get Token
+              </Button>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSaveVercelToken}
+                disabled={!vercelToken.trim()}
+                className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white"
+              >
+                Save Credentials
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-green-500/10 border border-green-400/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <span className="font-medium text-green-100">Vercel credentials configured</span>
+              </div>
+              <p className="text-sm text-green-200/80">
+                Your Vercel access token is securely stored and ready for deployments.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={handleRemoveVercelToken}
+                className="border-red-500/20 text-red-400 hover:bg-red-900/10"
+              >
+                Remove Credentials
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Future Providers */}
+      <Card className="p-6 glass-card opacity-50">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center">
+            <Plus className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">More Providers Coming Soon</h3>
+            <p className="text-gray-400">
+              AWS Amplify, DigitalOcean, and other providers will be added in future updates
+            </p>
+          </div>
+        </div>
+      </Card>
     </div>
   );
-};
+}

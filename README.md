@@ -1,123 +1,178 @@
 # Deployify
 
-A comprehensive deployment orchestration platform that automates the build and deployment of web applications to multiple cloud providers.
+A modern deployment platform with separate frontend and backend for deploying GitHub repositories to Netlify and Vercel.
 
 ## Features
 
-- **Multi-Provider Deployment**: Support for Netlify, Vercel, DigitalOcean App Platform, and AWS Amplify
-- **Smart Stack Detection**: Automatically detects project type and chooses optimal provider
-- **Real-time Logs**: Live deployment logs via Server-Sent Events
-- **Containerized Builds**: Isolated Docker builds for security and consistency
-- **Queue Management**: BullMQ-powered job queuing with Redis
-- **Modern UI**: React with TypeScript, Tailwind CSS, and shadcn/ui components
+- **Multi-Provider Support**: Deploy to Netlify and Vercel
+- **Two Deployment Modes**:
+  - **Drag & Drop**: Upload prebuilt static files (build/dist/public folders)
+  - **Git Import**: Let providers build your project from source
+- **Repository Inspection**: Automatically detect prebuilt folders
+- **Real-time UI**: Modern React frontend with live deployment status
+- **Clean Architecture**: Separate frontend and backend services
+- **No Local Builds**: All processing happens on the server or provider-side
 
 ## Architecture
 
-### Backend (NestJS)
-- **API Server**: RESTful endpoints for deployment management
-- **Worker Queue**: Background job processing with BullMQ
-- **Provider Services**: Modular connectors for each deployment platform
-- **Container Service**: Docker-based build isolation
-- **Database**: PostgreSQL for deployment history and metadata
+### Backend (`deployify-backend/`)
+- **Express API**: RESTful endpoints for repo inspection and deployment
+- **Git Operations**: Shallow cloning with simple-git
+- **Provider Integration**: Netlify and Vercel API clients
+- **File Processing**: Zip creation for drag-and-drop deployments
+- **Minimal Dependencies**: No rate limiting, retries, or complex features
 
-### Frontend (React)
-- **Real-time Dashboard**: Live deployment monitoring
-- **Provider Management**: Configure API keys and settings
-- **Deployment History**: Paginated history with filtering
-- **Stack Detection**: Visual provider selection matrix
+### Frontend (React + TypeScript)
+- **Modern UI**: Built with React, TypeScript, Tailwind CSS, and shadcn/ui
+- **Repository Inspection**: Check for prebuilt folders before deployment
+- **Provider Selection**: Choose between Netlify and Vercel
+- **Deployment Modes**: Drag & drop or Git import options
+- **Real-time Feedback**: Live deployment status and error handling
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+ (or Bun)
-- Docker Desktop
-- PostgreSQL 14+
-- Redis 6+
+- Node.js 18+
+- Netlify and/or Vercel accounts with API tokens
 
 ### Backend Setup
 
-1. **Environment Configuration**
+1. **Navigate to Backend**
    ```bash
-   cd backend
-   cp .env.example .env
+   cd deployify-backend
    ```
 
-2. **Configure Environment Variables**
-   ```env
-   # Database
-   DATABASE_URL=postgresql://username:password@localhost:5432/deployify
-   
-   # Redis
-   REDIS_URL=redis://localhost:6379
-   
-   # JWT
-   JWT_SECRET=your-super-secret-jwt-key-here
-   
-   # Provider API Keys (optional - configure via UI later)
-   NETLIFY_ACCESS_TOKEN=your-netlify-token
-   VERCEL_TOKEN=your-vercel-token
-   DO_TOKEN=your-digitalocean-token
-   AWS_ACCESS_KEY_ID=your-aws-access-key
-   AWS_SECRET_ACCESS_KEY=your-aws-secret-key
-   ```
-
-3. **Install Dependencies**
+2. **Install Dependencies**
    ```bash
    npm install
    ```
 
-4. **Start Services**
+3. **Configure Environment**
    ```bash
-   # Start PostgreSQL and Redis
-   docker-compose up -d postgres redis
-   
-   # Run database migrations
-   npm run migration:run
-   
-   # Start development server
-   npm run start:dev
+   cp .env.example .env
+   # Edit .env with your API tokens
+   ```
+
+4. **Get API Tokens**
+   - **Netlify**: https://app.netlify.com/user/applications#personal-access-tokens
+   - **Vercel**: https://vercel.com/account/tokens
+
+5. **Start Backend Server**
+   ```bash
+   npm run dev
    ```
 
 ### Frontend Setup
 
-1. **Install Dependencies**
+1. **Navigate to Project Root**
    ```bash
-   # From project root
-   npm install
-   # or
-   bun install
+   cd ..  # if you're in deployify-backend/
    ```
 
-2. **Start Development Server**
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment**
+   ```bash
+   cp .env.example .env.local
+   ```
+
+4. **Start Frontend Server**
    ```bash
    npm run dev
-   # or
-   bun dev
    ```
 
-3. **Access Application**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:3001
-   - API Documentation: http://localhost:3001/api/docs
+### Access Application
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:4000
 
 ## Usage
 
-### Basic Deployment
+### Deploy from Git Repository
 
 1. **Navigate to Features Page**
-   - Click the "Deploy Now" button
-   - Enter your GitHub repository URL
-   - Choose deployment options
+   - Click "Get Started" or "Explore Features"
+   - Choose from sample repositories or enter your own Git URL
 
-2. **Monitor Progress**
-   - Watch real-time build logs
-   - Track deployment status
-   - Access deployed application URL
+2. **Enter Repository Details**
+   - Git Repository URL (GitHub, GitLab, Bitbucket)
+   - Optional: Custom site name
+   - Click "Deploy to Netlify"
 
-3. **Manage Deployments**
-   - View deployment history in Deployments page
-   - Filter by provider or status
-   - Cancel running deployments
+3. **Monitor Deployment**
+   - Watch real-time deployment progress
+   - Get live URL once deployment completes
+   - View deployment logs in the bottom-right panel
+
+### Supported Repository Types
+
+- Static websites (HTML, CSS, JS)
+- React applications
+- Vue.js applications
+- Next.js applications
+- Documentation sites (Docusaurus, etc.)
+- Any static site generator output
+
+## API Endpoints
+
+### POST /deploy-from-git
+Deploy a Git repository to Netlify.
+
+**Request:**
+```json
+{
+  "gitUrl": "https://github.com/username/repository.git",
+  "siteName": "my-site" // optional
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "deploymentId": "uuid",
+  "netlifyUrl": "https://site-name.netlify.app",
+  "deployUrl": "https://deploy-id--site-name.netlify.app",
+  "siteName": "site-name"
+}
+```
+
+### GET /health
+Health check endpoint.
+
+## Environment Variables
+
+### Backend (.env.local)
+```env
+PORT=3001
+NETLIFY_ACCESS_TOKEN=your_netlify_access_token_here
+TEMP_DIR=./temp
+```
+
+## How It Works
+
+1. **Repository Cloning**: Server clones the Git repository to a temporary directory
+2. **File Processing**: Creates a zip file excluding .git, node_modules, and other unnecessary files
+3. **Netlify Deployment**: Uploads the zip file directly to Netlify via their API
+4. **URL Generation**: Returns the live site URL and deployment details
+5. **Cleanup**: Automatically removes temporary files and directories
+
+## Security Features
+
+- Temporary file isolation
+- Automatic cleanup of cloned repositories
+- No persistent storage of user code
+- Secure API token handling
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## License
 

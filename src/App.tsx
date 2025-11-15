@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ShaderBackground from "@/components/ShaderBackground";
 import Navigation from "@/components/Navigation";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Home from "./pages/Home";
 import Info from "./pages/Info";
 import Features from "./pages/Features";
@@ -33,10 +34,22 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/info" element={<Info />} />
-          <Route path="/features" element={<Features />} />
-          <Route path="/deployments" element={<Deployments />} />
-          <Route path="/settings" element={<Settings />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/features" element={
+            <ProtectedRoute>
+              <Features />
+            </ProtectedRoute>
+          } />
+          <Route path="/deployments" element={
+            <ProtectedRoute>
+              <Deployments />
+            </ProtectedRoute>
+          } />
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          } />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

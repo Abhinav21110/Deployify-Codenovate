@@ -52,24 +52,41 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center text-white px-4 pb-32">
       <div className="max-w-md w-full blur-reveal">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 mb-6">
+          <div className="blur-reveal mb-6">
+            <div className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-500/10 backdrop-blur-md border border-indigo-300/30 rounded-full text-sm">
+              <span>🚀</span>
+              <span className="text-indigo-100">Join the deployment revolution</span>
+            </div>
+          </div>
+          
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 mb-6 shadow-lg">
             <Rocket className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">
+          <h1 className="text-4xl md:text-5xl font-display font-bold mb-4 blur-reveal blur-reveal-delay-100">
             <span className="bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">
               Welcome to Deployify
             </span>
           </h1>
-          <p style={{color: '#d8d8e8'}}>
+          <p className="text-xl blur-reveal blur-reveal-delay-200" style={{color: '#d8d8e8'}}>
             Start your deployment journey today
           </p>
         </div>
 
-        <Card className="p-8 glass-card">
+        <Card className="p-8 rounded-2xl glass-card card-hover blur-reveal blur-reveal-delay-300">
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-8">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 mb-8 bg-black/40 backdrop-blur-sm border border-white/10">
+              <TabsTrigger 
+                value="login" 
+                className="text-white data-[state=active]:bg-indigo-500/20 data-[state=active]:text-white data-[state=active]:border-indigo-400/50 data-[state=active]:shadow-lg"
+              >
+                Login
+              </TabsTrigger>
+              <TabsTrigger 
+                value="signup"
+                className="text-white data-[state=active]:bg-indigo-500/20 data-[state=active]:text-white data-[state=active]:border-indigo-400/50 data-[state=active]:shadow-lg"
+              >
+                Sign Up
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="login">
@@ -109,7 +126,7 @@ export default function Auth() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white"
+                  className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   {isLoading ? 'Logging in...' : 'Login'}
                 </Button>
@@ -170,7 +187,7 @@ export default function Auth() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white"
+                  className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   {isLoading ? 'Creating account...' : 'Sign Up'}
                 </Button>

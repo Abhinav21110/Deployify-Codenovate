@@ -1,468 +1,469 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Loader2, GitBranch, Cloud, Settings, Zap, Info, Sparkles } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  apiClient, 
-  queryKeys, 
-  DeploymentRequest,
-  DeploymentResponse,
-  Provider,
-  Credential,
-  ProviderRecommendation 
-} from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, Github, Globe, AlertCircle, CheckCircle2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface EnhancedDeployModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (deploymentId: string) => void;
+  onSuccess: (deploymentData: any) => void;
 }
 
-export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
-  isOpen,
-  onClose,
-  onSuccess,
-}) => {
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('basic');
-  const [formData, setFormData] = useState<Partial<DeploymentRequest>>({
-    repoUrl: '',
-    branch: 'main',
-    environment: 'school',
-    budget: 'free',
-    config: {
-      name: '',
-      buildCommand: '', // Auto-detected if empty
-      buildDirectory: '',
-      environmentVariables: {},
-    },
-  });
-  const [selectedProvider, setSelectedProvider] = useState<string>('');
-  const [selectedCredential, setSelectedCredential] = useState<string>('');
-  const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>([]);
-  const [useAutoDetect, setUseAutoDetect] = useState(true);
+export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDeployModalProps) {
+  const [gitUrl, setGitUrl] = useState('');
+  const [provider, setProvider] = useState('netlify');
+  const [deployMode, setDeployMode] = useState('drag-drop');
 
-  // Queries
-  const { data: providersData, isLoading: loadingProviders } = useQuery({
-    queryKey: queryKeys.providers(),
-    queryFn: () => apiClient.getProviders(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  // Auto-update deploy mode when provider changes
+  useEffect(() => {
+    if (provider === 'docker') {
+      setDeployMode('docker-local');
+    } else if (deployMode === 'docker-local') {
+      setDeployMode('drag-drop');
+    }
+  }, [provider]);
+  const [buildDir, setBuildDir] = useState('');
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deploymentStep, setDeploymentStep] = useState('');
+  const [inspectionResult, setInspectionResult] = useState<any>(null);
 
-  const { data: credentialsData, isLoading: loadingCredentials } = useQuery({
-    queryKey: queryKeys.credentials(),
-    queryFn: () => apiClient.getUserCredentials(),
-    staleTime: 2 * 60 * 1000, // 2 minutes
-  });
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
-  // Mutations
-  const deployMutation = useMutation({
-    mutationFn: (data: DeploymentRequest) => apiClient.createDeployment(data),
-    onSuccess: (response) => {
-      toast.success(`Deployment ${(response as DeploymentResponse).deploymentId} has been queued successfully!`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.deployments(1) });
-      onSuccess?.((response as DeploymentResponse).deploymentId);
-      onClose();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to create deployment');
-    },
-  });
-
-  const providers = providersData?.providers || [];
-  const credentials = credentialsData?.credentials || [];
-
-  // Filter credentials for selected provider
-  const availableCredentials = credentials.filter(
-    cred => cred.provider === selectedProvider && cred.isActive
-  );
-
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.repoUrl) {
-      toast.error('Please provide a repository URL');
+  const handleInspect = async () => {
+    if (!gitUrl.trim()) {
+      toast.error('Please enter a Git repository URL');
       return;
     }
 
-    // Prepare deployment data
-    const deploymentData: DeploymentRequest = {
-      ...formData,
-      provider: selectedProvider || undefined,
-      credentialId: selectedCredential || undefined,
-      config: {
-        ...formData.config,
-        environmentVariables: envVars.reduce((acc, { key, value }) => {
-          if (key && value) acc[key] = value;
-          return acc;
-        }, {} as Record<string, string>),
-      },
-    } as DeploymentRequest;
+    if (!gitUrl.includes('github.com')) {
+      toast.error('Please enter a valid GitHub repository URL');
+      return;
+    }
 
-    deployMutation.mutate(deploymentData);
+    setIsInspecting(true);
+    setInspectionResult(null);
+
+    try {
+      const response = await fetch(`${backendUrl}/api/repo/inspect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          repoUrl: gitUrl.trim(),
+          branch: 'main'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Inspection failed');
+      }
+
+      setInspectionResult(data);
+      
+      if (data.hasPrebuilt) {
+        toast.success(`Found prebuilt folders: ${data.candidates.join(', ')}`);
+        if (data.candidates.length > 0) {
+          setBuildDir(data.candidates[0]); // Set first candidate as default
+        }
+      } else {
+        toast.warning('No prebuilt folders found. Consider using git-import mode.');
+        setDeployMode('git-import');
+      }
+
+    } catch (error) {
+      console.error('Inspection error:', error);
+      toast.error('Repository inspection failed', {
+        description: error instanceof Error ? error.message : 'Failed to inspect repository',
+      });
+    } finally {
+      setIsInspecting(false);
+    }
   };
 
-  // Add environment variable
-  const addEnvVar = () => {
-    setEnvVars([...envVars, { key: '', value: '' }]);
+  const handleDeploy = async () => {
+    if (!gitUrl.trim()) {
+      toast.error('Please enter a Git repository URL');
+      return;
+    }
+
+    if (deployMode === 'drag-drop' && !inspectionResult?.hasPrebuilt && !buildDir) {
+      toast.error('Please inspect the repository first or specify a build directory');
+      return;
+    }
+
+    if (provider === 'docker') {
+      // Check if Docker is available (basic check)
+      toast.info('Starting Docker deployment - this may take a few minutes to build the image...');
+    }
+
+    setIsDeploying(true);
+    setDeploymentStep('Initializing deployment...');
+
+    try {
+      setDeploymentStep('Starting deployment...');
+      
+      const requestBody: any = {
+        repoUrl: gitUrl.trim(),
+        provider,
+        deployMode,
+        branch: 'main'
+      };
+
+      if (buildDir && deployMode === 'drag-drop') {
+        requestBody.buildDir = buildDir;
+      }
+      
+      console.log('Making request to:', `${backendUrl}/api/deploy`);
+      console.log('Request body:', requestBody);
+      
+      const response = await fetch(`${backendUrl}/api/deploy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Deployment failed');
+      }
+
+      setDeploymentStep('Deployment successful!');
+      
+      const siteUrl = data.site_url || data.siteUrl || data.deployment_url;
+      
+      if (data.provider === 'vercel') {
+        toast.success('🎉 Vercel project created!', {
+          description: 'Your project is connected to GitHub and will auto-deploy. Check back in 2-3 minutes.',
+          duration: 15000,
+          action: siteUrl ? {
+            label: 'View Project URL',
+            onClick: () => window.open(siteUrl, '_blank'),
+          } : undefined,
+        });
+      } else if (data.provider === 'docker') {
+        toast.success('🐳 Docker deployment successful!', {
+          description: `Your full-stack app is running locally at: ${siteUrl}`,
+          duration: 15000,
+          action: siteUrl ? {
+            label: 'Open App',
+            onClick: () => window.open(siteUrl, '_blank'),
+          } : undefined,
+        });
+      } else {
+        toast.success('🎉 Deployment completed!', {
+          description: siteUrl ? `Your site is live at: ${siteUrl}` : 'Deployment created successfully',
+          duration: 10000,
+          action: siteUrl ? {
+            label: 'Open Site',
+            onClick: () => window.open(siteUrl, '_blank'),
+          } : undefined,
+        });
+      }
+
+      onSuccess({
+        deploymentId: data.deploymentId || data.deploy_id || data.project_id,
+        gitUrl: gitUrl.trim(),
+        provider: data.provider,
+        siteUrl: siteUrl,
+        siteName: data.siteName || `${provider} deployment`,
+        status: data.status
+      });
+      
+      // Reset form
+      setGitUrl('');
+      setBuildDir('');
+      setInspectionResult(null);
+      
+    } catch (error) {
+      console.error('Deployment error:', error);
+      
+      let errorMessage = 'An unexpected error occurred';
+      if (error instanceof Error) {
+        if (error.message.includes('fetch')) {
+          errorMessage = 'Cannot connect to backend server. Make sure the backend is running on port 4000.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast.error('Deployment failed', {
+        description: errorMessage,
+      });
+      setDeploymentStep('');
+    } finally {
+      setIsDeploying(false);
+    }
   };
 
-  // Remove environment variable
-  const removeEnvVar = (index: number) => {
-    setEnvVars(envVars.filter((_, i) => i !== index));
+  const handleClose = () => {
+    if (!isDeploying && !isInspecting) {
+      onClose();
+      setGitUrl('');
+      setBuildDir('');
+      setInspectionResult(null);
+      setDeploymentStep('');
+    }
   };
-
-  // Update environment variable
-  const updateEnvVar = (index: number, field: 'key' | 'value', value: string) => {
-    const updated = envVars.map((env, i) => 
-      i === index ? { ...env, [field]: value } : env
-    );
-    setEnvVars(updated);
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto glass-card-strong">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Cloud className="h-5 w-5" />
-            Create New Deployment
-          </CardTitle>
-          <CardDescription>
-            Deploy your GitHub repository with intelligent provider selection
-          </CardDescription>
-        </CardHeader>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] w-[95vw] glass-card border-white/20 overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0 pb-4 border-b border-white/10">
+          <DialogTitle className="text-xl md:text-2xl font-display font-bold text-white flex items-center gap-2">
+            <Github className="h-5 w-5 md:h-6 md:w-6 text-purple-400" />
+            Deploy from Git Repository
+          </DialogTitle>
+        </DialogHeader>
 
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3 glass-card-subtle">
-                <TabsTrigger value="basic">Basic Settings</TabsTrigger>
-                <TabsTrigger value="provider">Provider & Credentials</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced Config</TabsTrigger>
-              </TabsList>
-
-              {/* Basic Settings Tab */}
-              <TabsContent value="basic" className="space-y-4">
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="repoUrl">Repository URL *</Label>
-                    <Input
-                      id="repoUrl"
-                      type="url"
-                      placeholder="https://github.com/username/repository"
-                      value={formData.repoUrl}
-                      onChange={(e) => setFormData({ ...formData, repoUrl: e.target.value })}
-                      required
-                      className="glass-input"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="branch">Branch</Label>
-                      <Input
-                        id="branch"
-                        placeholder="main"
-                        value={formData.branch}
-                        onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                        className="glass-input"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="environment">Environment</Label>
-                      <Select
-                        value={formData.environment}
-                        onValueChange={(value) => setFormData({ ...formData, environment: value as any })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="school">School (Free)</SelectItem>
-                          <SelectItem value="staging">Staging</SelectItem>
-                          <SelectItem value="prod">Production</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="budget">Budget Preference</Label>
-                    <Select
-                      value={formData.budget}
-                      onValueChange={(value) => setFormData({ ...formData, budget: value as any })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="free">Free Tier Only</SelectItem>
-                        <SelectItem value="low">Low Cost ($5-20/month)</SelectItem>
-                        <SelectItem value="any">Any Price</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Deployment Name</Label>
-                    <Input
-                      id="name"
-                      placeholder="my-awesome-app"
-                      value={formData.config?.name || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        config: { ...formData.config, name: e.target.value }
-                      })}
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* Provider & Credentials Tab */}
-              <TabsContent value="provider" className="space-y-4">
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="auto-detect"
-                      checked={useAutoDetect}
-                      onCheckedChange={setUseAutoDetect}
-                    />
-                    <Label htmlFor="auto-detect">Auto-detect optimal provider</Label>
-                  </div>
-
-                  {!useAutoDetect && (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Select Provider</Label>
-                        {loadingProviders ? (
-                          <div className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading providers...
-                          </div>
-                        ) : (
-                          <div className="grid gap-2">
-                            {providers.map((provider) => (
-                              <Card 
-                                key={provider.type}
-                                className={`p-3 cursor-pointer border-2 transition-colors ${
-                                  selectedProvider === provider.type
-                                    ? 'border-primary bg-primary/5'
-                                    : 'border-border hover:border-muted-foreground'
-                                }`}
-                                onClick={() => setSelectedProvider(provider.type)}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div>
-                                    <h4 className="font-medium">{provider?.name || provider.type}</h4>
-                                    <p className="text-sm text-muted-foreground">
-                                      Max size: {provider.maxFileSize}MB
-                                    </p>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    {provider.supportsFreeTier && (
-                                      <Badge variant="secondary">Free Tier</Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              </Card>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {selectedProvider && (
-                        <div className="space-y-2">
-                          <Label>Credentials (Optional)</Label>
-                          {loadingCredentials ? (
-                            <div className="flex items-center gap-2">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Loading credentials...
-                            </div>
-                          ) : availableCredentials.length > 0 ? (
-                            <Select
-                              value={selectedCredential}
-                              onValueChange={setSelectedCredential}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Auto-select first available" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableCredentials.map((cred) => (
-                                  <SelectItem key={cred.id} value={cred.id}>
-                                    <div className="flex items-center gap-2">
-                                      {cred.name}
-                                      {cred.isValid && (
-                                        <Badge variant="secondary" className="text-xs">
-                                          Valid
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Alert>
-                              <Info className="h-4 w-4" />
-                              <AlertDescription>
-                                No credentials found for {selectedProvider}. Add credentials in Settings - deployment will fail without valid credentials.
-                              </AlertDescription>
-                            </Alert>
-                          )}
-                        </div>
-                      )}
-                    </div>
+        <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+          <div className="space-y-4 md:space-y-6 py-4">
+            {/* Git Repository URL */}
+            <div className="space-y-2">
+              <Label htmlFor="gitUrl" className="text-white font-medium text-sm md:text-base">
+                GitHub Repository URL
+              </Label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  id="gitUrl"
+                  type="url"
+                  placeholder="https://github.com/username/repository"
+                  value={gitUrl}
+                  onChange={(e) => setGitUrl(e.target.value)}
+                  disabled={isDeploying || isInspecting}
+                  className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/50 text-sm"
+                />
+                <Button
+                  onClick={handleInspect}
+                  disabled={isInspecting || isDeploying || !gitUrl.trim()}
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 text-white hover:bg-white/10 w-full sm:w-auto"
+                >
+                  {isInspecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Search className="h-4 w-4 mr-2" />
                   )}
+                  {isInspecting ? 'Inspecting...' : 'Inspect'}
+                </Button>
+              </div>
+              <p className="text-xs md:text-sm text-white/70">
+                Only public GitHub repositories are supported
+              </p>
+            </div>
 
-                  {useAutoDetect && (
-                    <Alert>
-                      <Info className="h-4 w-4" />
-                      <AlertDescription>
-                        The system will automatically select the best provider and use your first available credential for that provider.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* Advanced Config Tab */}
-              <TabsContent value="advanced" className="space-y-4">
-                <div className="mb-4 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-start gap-2">
-                    <Sparkles className="h-4 w-4 text-blue-500 mt-0.5" />
-                    <div className="text-sm">
-                      <p className="font-medium text-blue-700 dark:text-blue-300">Smart Auto-Detection</p>
-                      <p className="text-blue-600 dark:text-blue-400">
-                        Leave fields empty to let Deployify automatically detect your build commands, output directories, and common environment variables from your project configuration.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="build-cmd">Build Command <span className="text-muted-foreground">(Optional)</span></Label>
-                      <Input
-                        id="build-cmd"
-                        placeholder="Leave empty for auto-detection"
-                        value={formData.config?.buildCommand || ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          config: { ...formData.config, buildCommand: e.target.value }
-                        })}
-                      />
-                      <p className="text-xs text-muted-foreground">We'll automatically detect your build command from package.json</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="build-dir">Build Directory <span className="text-muted-foreground">(Optional)</span></Label>
-                      <Input
-                        id="build-dir"
-                        placeholder="Auto-detected (e.g., dist, build)"
-                        value={formData.config?.buildDirectory || ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          config: { ...formData.config, buildDirectory: e.target.value }
-                        })}
-                      />
-                      <p className="text-xs text-muted-foreground">We'll automatically detect your build output directory</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Environment Variables <span className="text-muted-foreground">(Optional)</span></Label>
-                      <Button type="button" variant="outline" size="sm" onClick={addEnvVar}>
-                        Add Variable
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-2">Add custom environment variables for your deployment. Common variables are often auto-detected.</p>
-                    <div className="space-y-2">
-                      {envVars.map((env, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            placeholder="KEY"
-                            value={env.key}
-                            onChange={(e) => updateEnvVar(index, 'key', e.target.value)}
-                          />
-                          <Input
-                            placeholder="value"
-                            value={env.value}
-                            onChange={(e) => updateEnvVar(index, 'value', e.target.value)}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => removeEnvVar(index)}
-                          >
-                            Remove
-                          </Button>
-                        </div>
+          {/* Inspection Results */}
+          {inspectionResult && (
+            <Card className="p-4 bg-white/5 border-white/20">
+              <div className="flex items-start gap-3">
+                {inspectionResult.hasPrebuilt ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-400 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-orange-400 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <p className="font-medium text-white mb-2">
+                    {inspectionResult.hasPrebuilt ? 'Prebuilt folders found' : 'No prebuilt folders found'}
+                  </p>
+                  {inspectionResult.hasPrebuilt ? (
+                    <div className="flex gap-2 flex-wrap">
+                      {inspectionResult.candidates.map((folder: string) => (
+                        <Badge key={folder} variant="secondary" className="text-xs">
+                          {folder}
+                        </Badge>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-sm text-white/70">
+                      Consider using git-import mode to let the provider build your project
+                    </p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+            {/* Provider Selection */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+              <div className="space-y-2">
+                <Label className="text-white font-medium text-sm md:text-base">Provider</Label>
+                <Select value={provider} onValueChange={setProvider} disabled={isDeploying}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white h-9 md:h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="netlify">Netlify</SelectItem>
+                    <SelectItem value="vercel">Vercel</SelectItem>
+                    <SelectItem value="docker">Docker (Local)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white font-medium text-sm md:text-base">Deploy Mode</Label>
+                <Select 
+                  value={deployMode} 
+                  onValueChange={setDeployMode} 
+                  disabled={isDeploying}
+                >
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white h-9 md:h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {provider === 'docker' ? (
+                      <SelectItem value="docker-local">Docker Container (Full-Stack)</SelectItem>
+                    ) : (
+                      <>
+                        <SelectItem value="drag-drop">Drag & Drop (prebuilt)</SelectItem>
+                        <SelectItem value="git-import">Git Import (provider builds)</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Build Directory (for drag-drop mode) */}
+            {deployMode === 'drag-drop' && (
+              <div className="space-y-2">
+                <Label htmlFor="buildDir" className="text-white font-medium text-sm md:text-base">
+                  Build Directory (Optional)
+                </Label>
+                <Input
+                  id="buildDir"
+                  type="text"
+                  placeholder="build, dist, or public"
+                  value={buildDir}
+                  onChange={(e) => setBuildDir(e.target.value)}
+                  disabled={isDeploying}
+                  className="bg-white/10 border-white/20 text-white placeholder:text-white/50 text-sm h-9 md:h-10"
+                />
+                <p className="text-xs md:text-sm text-white/70">
+                  Leave empty to auto-detect from inspection results
+                </p>
+              </div>
+            )}
+
+          {/* Docker Info */}
+          {provider === 'docker' && (
+            <Card className="p-4 bg-blue-500/10 border-blue-400/30">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">🐳</div>
+                <div>
+                  <p className="font-medium text-blue-100 mb-1">Docker Local Deployment</p>
+                  <ul className="text-sm text-blue-200/70 space-y-1">
+                    <li>• Creates a single Docker image with frontend + backend</li>
+                    <li>• Runs locally on your machine (requires Docker installed)</li>
+                    <li>• Full-stack application in one container</li>
+                    <li>• Accessible at http://localhost:PORT</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+          )}
+
+            {/* Deployment Status */}
+            {isDeploying && (
+              <Card className="p-3 md:p-4 bg-blue-500/10 border-blue-400/30">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 md:h-5 md:w-5 text-blue-400 animate-spin flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-blue-100 text-sm md:text-base truncate">{deploymentStep}</p>
+                    <p className="text-xs md:text-sm text-blue-200/70">
+                      This may take a few minutes...
+                    </p>
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
-          </form>
-        </CardContent>
-
-        <CardFooter className="flex justify-between">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <div className="flex gap-2">
-            {activeTab !== 'advanced' && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const tabs = ['basic', 'provider', 'advanced'];
-                  const currentIndex = tabs.indexOf(activeTab);
-                  if (currentIndex < tabs.length - 1) {
-                    setActiveTab(tabs[currentIndex + 1]);
-                  }
-                }}
-              >
-                Next
-              </Button>
+              </Card>
             )}
+
+          {/* Info Card */}
+          <Card className="p-4 bg-orange-500/10 border-orange-400/30">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-orange-400 mt-0.5" />
+              <div>
+                <p className="font-medium text-orange-100 mb-1">
+                  {deployMode === 'drag-drop' ? 'Drag & Drop Mode' : 
+                   deployMode === 'docker-local' ? 'Docker Local Mode' : 'Git Import Mode'}
+                </p>
+                <ul className="text-sm text-orange-200/70 space-y-1">
+                  {deployMode === 'drag-drop' ? (
+                    <>
+                      <li>• Uploads prebuilt static files from your repository</li>
+                      <li>• Requires build, dist, or public folder in your repo</li>
+                      <li>• No server-side building - instant deployment</li>
+                    </>
+                  ) : deployMode === 'docker-local' ? (
+                    <>
+                      <li>• Creates a Docker image with your full application</li>
+                      <li>• Includes both frontend and backend in one container</li>
+                      <li>• Runs locally on your machine (requires Docker)</li>
+                      <li>• Perfect for full-stack applications</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• Links your repository to the provider</li>
+                      <li>• Provider builds your project automatically</li>
+                      <li>• Supports any framework with build scripts</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </Card>
+
+          </div>
+        </div>
+
+        {/* Action Buttons - Fixed at bottom */}
+        <div className="flex-shrink-0 pt-4 border-t border-white/10 mt-4">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <Button
-              onClick={handleSubmit}
-              disabled={deployMutation.isPending || !formData.repoUrl}
-              className="min-w-32"
+              onClick={handleClose}
+              variant="outline"
+              disabled={isDeploying || isInspecting}
+              className="flex-1 border-white/20 text-white hover:bg-white/10 h-9 md:h-10 text-sm md:text-base"
             >
-              {deployMutation.isPending ? (
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeploy}
+              disabled={isDeploying || isInspecting || !gitUrl.trim()}
+              className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white h-9 md:h-10 text-sm md:text-base"
+            >
+              {isDeploying ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deploying...
+                  <Loader2 className="mr-2 h-3 w-3 md:h-4 md:w-4 animate-spin" />
+                  <span className="hidden sm:inline">Deploying...</span>
+                  <span className="sm:hidden">Deploy...</span>
                 </>
               ) : (
                 <>
-                  <Zap className="mr-2 h-4 w-4" />
-                  Deploy
+                  <span className="hidden sm:inline">
+                    {`Deploy ${provider === 'docker' ? 'with Docker' : `to ${provider === 'netlify' ? 'Netlify' : 'Vercel'}`}`}
+                  </span>
+                  <span className="sm:hidden">
+                    {provider === 'docker' ? 'Docker' : provider === 'netlify' ? 'Netlify' : 'Vercel'}
+                  </span>
                 </>
               )}
             </Button>
           </div>
-        </CardFooter>
-      </Card>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-};
+}

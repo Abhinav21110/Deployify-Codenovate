@@ -1,116 +1,152 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CheckCircle, Clock, GitBranch, Globe, AlertCircle, ExternalLink, Eye, Search, RefreshCw, X, Plus, Settings, Key, Monitor, Trash2, StopCircle } from 'lucide-react';
-import { apiClient, queryKeys, DeploymentStatus } from '@/lib/api';
+import { useState, useEffect } from 'react';
 import { useBlurReveal } from '@/hooks/useBlurReveal';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { CheckCircle, Clock, AlertCircle, ExternalLink, Plus, RefreshCw, Search, Trash2, Terminal } from 'lucide-react';
 import { toast } from 'sonner';
 import { EnhancedDeployModal } from '@/components/EnhancedDeployModal';
-import { CredentialsManager } from '@/components/CredentialsManager';
-import { DeploymentLogs } from '@/components/DeploymentLogs';
+import { LogsViewer } from '@/components/LogsViewer';
+import { DockerContainerManager } from '@/components/DockerContainerManager';
 
-const statusConfig = {
-  queued: { icon: Clock, color: 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/20', label: 'Queued' },
-  cloning: { icon: GitBranch, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900/20', label: 'Cloning' },
-  building: { icon: Clock, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900/20', label: 'Building' },
-  deploying: { icon: Globe, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900/20', label: 'Deploying' },
-  success: { icon: CheckCircle, color: 'text-green-500 bg-green-100 dark:bg-green-900/20', label: 'Success' },
-  failed: { icon: AlertCircle, color: 'text-red-500 bg-red-100 dark:bg-red-900/20', label: 'Failed' },
-  cancelled: { icon: X, color: 'text-gray-500 bg-gray-100 dark:bg-gray-900/20', label: 'Cancelled' },
-};
+interface Deployment {
+  id: string;
+  gitUrl: string;
+  siteName?: string;
+  netlifyUrl?: string;
+  deployUrl?: string;
+  status: 'success' | 'failed' | 'deploying';
+  createdAt: string;
+  error?: string;
+  provider?: string;
+}
 
-function DeploymentsPage() {
+export default function Deployments() {
   useBlurReveal();
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [activeTab, setActiveTab] = useState('deployments');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedDeployment, setSelectedDeployment] = useState<DeploymentStatus | null>(null);
+  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
 
-  const queryClient = useQueryClient();
-
-  // Cancel deployment mutation
-  const cancelMutation = useMutation({
-    mutationFn: (deploymentId: string) => apiClient.cancelDeployment(deploymentId),
-    onSuccess: (data, deploymentId) => {
-      toast.success('Deployment cancelled successfully!');
-      queryClient.invalidateQueries({ queryKey: queryKeys.deployments(1) });
-    },
-    onError: (error: any) => {
-      toast.error(`Failed to cancel deployment: ${error.message}`);
-    },
-  });
-
-  // Delete deployment mutation
-  const deleteMutation = useMutation({
-    mutationFn: (deploymentId: string) => apiClient.deleteDeployment(deploymentId),
-    onSuccess: (data, deploymentId) => {
-      toast.success('Deployment deleted successfully!');
-      queryClient.invalidateQueries({ queryKey: queryKeys.deployments(1) });
-    },
-    onError: (error: any) => {
-      toast.error(`Failed to delete deployment: ${error.message}`);
-    },
-  });
-
-  // Fetch deployments from API
-  const { data: deploymentsData, isLoading, error, refetch } = useQuery({
-    queryKey: queryKeys.deployments(1),
-    queryFn: () => apiClient.getDeployments(),
-    refetchInterval: (query) => {
-      // Only auto-refresh if there are active deployments
-      const data = query.state.data;
-      if (data?.deployments) {
-        const hasActiveDeployments = data.deployments.some((d: DeploymentStatus) =>
-          ['queued', 'cloning', 'building', 'deploying'].includes(d.status)
-        );
-        return hasActiveDeployments ? 10000 : false; // 10 seconds for active deployments
+  // Check backend health
+  const checkBackendHealth = async () => {
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+      const response = await fetch(`${backendUrl}/health`);
+      if (!response.ok) {
+        throw new Error('Backend not responding');
       }
+      return true;
+    } catch (error) {
+      console.error('Backend health check failed:', error);
       return false;
-    },
-  });
-
-  const deployments = deploymentsData?.deployments || [];
-
-  const filteredDeployments = deployments.filter((deployment: DeploymentStatus) => {
-    const matchesSearch = searchTerm === '' ||
-      deployment.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      deployment.provider?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      deployment.analysis?.framework?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || deployment.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-  const handleNewDeployment = () => {
-    setIsCreateModalOpen(true);
-  };
-
-  const handleViewDeployment = (deployment: DeploymentStatus) => {
-    setSelectedDeployment(deployment);
-  };
-
-  const handleCancelDeployment = (deploymentId: string) => {
-    if (window.confirm('Are you sure you want to cancel this deployment?')) {
-      cancelMutation.mutate(deploymentId);
     }
   };
 
-  const handleDeleteDeployment = (deploymentId: string) => {
-    if (window.confirm('Are you sure you want to delete this deployment? This action cannot be undone.')) {
-      deleteMutation.mutate(deploymentId);
+  // Load deployments from localStorage
+  const loadDeployments = () => {
+    try {
+      const stored = localStorage.getItem('deployify-deployments');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Filter out invalid deployments
+        const validDeployments = Array.isArray(parsed) ? parsed.filter(d => d && d.id && d.gitUrl) : [];
+        setDeployments(validDeployments);
+      }
+      setIsLoading(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading deployments:', err);
+      setError('Failed to load deployments');
+      setIsLoading(false);
     }
   };
 
-  const isDeploymentActive = (status: string) => {
-    return ['queued', 'cloning', 'building', 'deploying'].includes(status);
+  // Check backend and load deployments on mount
+  useEffect(() => {
+    const init = async () => {
+      const isHealthy = await checkBackendHealth();
+      if (!isHealthy) {
+        setError('Backend is not running. Please start the backend server.');
+        setIsLoading(false);
+        return;
+      }
+      loadDeployments();
+    };
+    
+    init();
+  }, []);
+
+  // Handle successful deployment
+  const handleDeploymentSuccess = (deploymentData: any) => {
+    console.log('Received deployment data:', deploymentData);
+    
+    const newDeployment: Deployment = {
+      id: deploymentData.deploymentId,
+      gitUrl: deploymentData.gitUrl || 'Unknown',
+      siteName: deploymentData.siteName || deploymentData.provider,
+      netlifyUrl: deploymentData.siteUrl,
+      deployUrl: deploymentData.siteUrl,
+      status: deploymentData.status === 'created' ? 'success' : 'deploying',
+      createdAt: new Date().toISOString(),
+      provider: deploymentData.provider
+    };
+
+    console.log('Created deployment object:', newDeployment);
+
+    const updatedDeployments = [newDeployment, ...deployments];
+    setDeployments(updatedDeployments);
+    
+    // Save to localStorage
+    localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
+    
+    setIsCreateModalOpen(false);
+    toast.success('Deployment added to history!');
+  };
+
+  // Handle delete deployment
+  const handleDeleteDeployment = (id: string) => {
+    const updatedDeployments = deployments.filter(d => d.id !== id);
+    setDeployments(updatedDeployments);
+    localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
+    toast.success('Deployment removed');
+  };
+
+  // Filter deployments based on search
+  const filteredDeployments = deployments.filter(deployment => 
+    deployment.gitUrl?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    deployment.siteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    deployment.id?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'success':
+        return <CheckCircle className="h-4 w-4 text-green-400" />;
+      case 'failed':
+        return <AlertCircle className="h-4 w-4 text-red-400" />;
+      case 'deploying':
+        return <Clock className="h-4 w-4 text-blue-400 animate-pulse" />;
+      default:
+        return <Clock className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'success':
+        return 'text-green-400 bg-green-400/10 border-green-400/20';
+      case 'failed':
+        return 'text-red-400 bg-red-400/10 border-red-400/20';
+      case 'deploying':
+        return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+      default:
+        return 'text-gray-400 bg-gray-400/10 border-gray-400/20';
+    }
   };
 
   if (isLoading) {
@@ -119,7 +155,6 @@ function DeploymentsPage() {
         <div className="max-w-7xl mx-auto pt-20">
           <div className="flex items-center justify-center">
             <RefreshCw className="h-8 w-8 animate-spin text-indigo-400" />
-            <span className="ml-2 text-xl">Loading deployments...</span>
           </div>
         </div>
       </div>
@@ -130,377 +165,198 @@ function DeploymentsPage() {
     return (
       <div className="min-h-screen text-white pb-32 px-4">
         <div className="max-w-7xl mx-auto pt-20">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-red-400 mb-4">Error loading deployments</h1>
-            <p className="text-gray-400 mb-4">Please make sure the backend is running.</p>
-            <Button onClick={() => refetch()} className="bg-indigo-600 hover:bg-indigo-700">
-              <RefreshCw className="h-4 w-4 mr-2" />
+          <Card className="glass-card rounded-xl p-8 max-w-md mx-auto text-center">
+            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-300">Error</h3>
+            <p className="text-gray-400 mb-4">{error}</p>
+            <Button 
+              onClick={() => window.location.reload()} 
+              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-full"
+            >
               Retry
             </Button>
-          </div>
+          </Card>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen text-white">
-      <div className="container mx-auto py-8 px-4">
-        <div className="glass-card rounded-2xl p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
-                Deployment Dashboard
-              </h1>
-              <p className="text-gray-300">
-                Deploy, monitor, and manage your applications
-              </p>
-            </div>
-            <Button 
-              onClick={handleNewDeployment}
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-full px-6"
+    <div className="min-h-screen text-white pb-32 px-4">
+      <div className="max-w-7xl mx-auto pt-20">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-2">
+              Deployments
+            </h1>
+            <p className="text-gray-400">Manage and monitor your deployments</p>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setIsLogsModalOpen(true)}
+              variant="outline"
+              className="border-white/20 text-white hover:bg-white/10 gap-2"
             >
-              <Plus className="h-4 w-4 mr-2" />
+              <Terminal className="h-4 w-4" />
+              View Logs
+            </Button>
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-full gap-2"
+            >
+              <Plus className="h-4 w-4" />
               New Deployment
             </Button>
           </div>
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="glass-card bg-black/20 border-white/10 p-1">
-              <TabsTrigger value="deployments" className="data-[state=active]:bg-white/20 data-[state=active]:text-white text-gray-300">
-                <Monitor className="h-4 w-4 mr-2" />
-                Deployments
-              </TabsTrigger>
-              <TabsTrigger value="credentials" className="data-[state=active]:bg-white/20 data-[state=active]:text-white text-gray-300">
-                <Key className="h-4 w-4 mr-2" />
-                Credentials
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="deployments" className="space-y-6">
-              {/* Filters */}
-              <div className="flex items-center gap-4">
-                <div className="relative max-w-md flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search deployments..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 glass-card border-white/20 text-white placeholder-gray-400"
-                  />
-                </div>
-                
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40 glass-card border-white/20 text-white">
-                    <SelectValue placeholder="Filter by status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="success">Success</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                    <SelectItem value="queued">Queued</SelectItem>
-                    <SelectItem value="building">Building</SelectItem>
-                    <SelectItem value="deploying">Deploying</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  variant="outline"
-                  onClick={() => refetch()}
-                  className="glass-card border-white/20 text-white hover:bg-white/10"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Deployments Grid */}
-              <div className="grid gap-6">
-                {filteredDeployments.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="glass-card rounded-xl p-8 max-w-md mx-auto">
-                      <Globe className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                      <h3 className="text-xl font-semibold mb-2 text-gray-300">No deployments found</h3>
-                      <p className="text-gray-400 mb-4">
-                        {searchTerm || statusFilter !== 'all' ? 'Try adjusting your search criteria.' : 'Get started by creating your first deployment.'}
-                      </p>
-                      <Button 
-                        onClick={handleNewDeployment}
-                        className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-full"
-                      >
-                        Create Deployment
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  filteredDeployments.map((deployment) => {
-                    const StatusIcon = statusConfig[deployment.status]?.icon || Clock;
-                    const statusLabel = statusConfig[deployment.status]?.label || deployment.status;
-                    const isActive = isDeploymentActive(deployment.status);
-
-                    return (
-                      <div key={deployment.id} className="glass-card card-hover rounded-xl p-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-4 mb-3">
-                              <div className="font-mono text-sm text-gray-300 bg-black/20 px-3 py-1 rounded-full">
-                                {deployment.id.slice(0, 8)}
-                              </div>
-                              <Badge 
-                                variant="outline" 
-                                className={`gap-1 ${statusConfig[deployment.status]?.color || 'text-gray-500'} border-current/30`}
-                              >
-                                <StatusIcon className={`h-3 w-3 ${isActive ? 'animate-pulse' : ''}`} />
-                                {statusLabel}
-                              </Badge>
-                              {isActive && (
-                                <div className="flex items-center text-sm text-blue-400">
-                                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
-                                  Live
-                                </div>
-                              )}
-                            </div>
-                            
-                            <div className="grid md:grid-cols-3 gap-4 mb-4">
-                              <div>
-                                <div className="text-sm text-gray-400 mb-1">Project</div>
-                                <div className="font-medium text-white">
-                                  {deployment.analysis?.framework || 'Unknown'}
-                                </div>
-                                <div className="text-xs text-gray-400">
-                                  {deployment.analysis?.type || 'Unknown'} • 
-                                  {deployment.analysis?.estimatedSize ? ` ${deployment.analysis.estimatedSize}MB` : ''}
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <div className="text-sm text-gray-400 mb-1">Provider</div>
-                                <Badge variant="secondary" className="bg-white/10 text-white border-white/20">
-                                  {deployment.provider || 'auto-selected'}
-                                </Badge>
-                              </div>
-                              
-                              <div>
-                                <div className="text-sm text-gray-400 mb-1">Deployed</div>
-                                <div className="text-sm text-white">
-                                  {new Date(deployment.createdAt).toLocaleDateString()} at{' '}
-                                  {new Date(deployment.createdAt).toLocaleTimeString([], { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-
-                            {deployment.error && (
-                              <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-3 mb-4">
-                                <div className="text-sm text-red-300">
-                                  <strong>Error:</strong> {deployment.error}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewDeployment(deployment)}
-                              className="glass-card border-white/20 text-white hover:bg-white/10"
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              View
-                            </Button>
-                            
-                            {/* Cancel button for active deployments */}
-                            {isActive && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleCancelDeployment(deployment.id)}
-                                disabled={cancelMutation.isLoading}
-                                className="glass-card border-red-500/20 text-red-400 hover:bg-red-900/10"
-                              >
-                                <StopCircle className="h-3 w-3 mr-1" />
-                                {cancelMutation.isLoading ? 'Cancelling...' : 'Cancel'}
-                              </Button>
-                            )}
-                            
-                            {/* Delete button for completed/failed/cancelled deployments */}
-                            {!isActive && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteDeployment(deployment.id)}
-                                disabled={deleteMutation.isLoading}
-                                className="glass-card border-red-500/20 text-red-400 hover:bg-red-900/10"
-                              >
-                                <Trash2 className="h-3 w-3 mr-1" />
-                                {deleteMutation.isLoading ? 'Deleting...' : 'Delete'}
-                              </Button>
-                            )}
-                            
-                            {deployment.url && (
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="glass-card border-white/20 text-white hover:bg-white/10"
-                                onClick={() => window.open(deployment.url!, '_blank')}
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Stats */}
-              {filteredDeployments.length > 0 && (
-                <div className="mt-8 text-center text-sm text-gray-400">
-                  Showing {filteredDeployments.length} of {deployments.length} deployments
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="credentials">
-              <CredentialsManager />
-            </TabsContent>
-          </Tabs>
         </div>
 
-        {/* Enhanced Deploy Modal */}
-        <EnhancedDeployModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={(deploymentId) => {
-            toast.success(`Deployment ${deploymentId} created successfully!`);
-            queryClient.invalidateQueries({ queryKey: queryKeys.deployments(1) });
-          }}
-        />
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search deployments..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 glass-card border-white/20 text-white placeholder:text-gray-400"
+            />
+          </div>
+        </div>
 
-        {/* Deployment Details Modal */}
-        <Dialog open={!!selectedDeployment} onOpenChange={() => setSelectedDeployment(null)}>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-3">
-                <Monitor className="h-5 w-5" />
-                Deployment Details
-                {selectedDeployment && (
-                  <Badge className={statusConfig[selectedDeployment.status]?.color}>
-                    {statusConfig[selectedDeployment.status]?.label}
-                  </Badge>
-                )}
-              </DialogTitle>
-              <DialogDescription className="flex items-center justify-between">
-                <span>
-                  {selectedDeployment?.id} • {selectedDeployment?.provider}
-                </span>
-                {selectedDeployment && (
-                  <div className="flex items-center gap-2">
-                    {/* Cancel button for active deployments */}
-                    {isDeploymentActive(selectedDeployment.status) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          handleCancelDeployment(selectedDeployment.id);
-                          setSelectedDeployment(null);
-                        }}
-                        disabled={cancelMutation.isLoading}
-                        className="border-red-500/20 text-red-400 hover:bg-red-900/10"
-                      >
-                        <StopCircle className="h-3 w-3 mr-1" />
-                        {cancelMutation.isLoading ? 'Cancelling...' : 'Cancel'}
-                      </Button>
-                    )}
-                    
-                    {/* Delete button for completed/failed/cancelled deployments */}
-                    {!isDeploymentActive(selectedDeployment.status) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          handleDeleteDeployment(selectedDeployment.id);
-                          setSelectedDeployment(null);
-                        }}
-                        disabled={deleteMutation.isLoading}
-                        className="border-red-500/20 text-red-400 hover:bg-red-900/10"
-                      >
-                        <Trash2 className="h-3 w-3 mr-1" />
-                        {deleteMutation.isLoading ? 'Deleting...' : 'Delete'}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </DialogDescription>
-            </DialogHeader>
-
-            {selectedDeployment && (
-              <div className="space-y-6">
-                {/* Deployment Info */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Deployment Information</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground mb-1">Status</div>
-                      <Badge className={statusConfig[selectedDeployment.status]?.color}>
-                        {statusConfig[selectedDeployment.status]?.label}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground mb-1">Provider</div>
-                      <div>{selectedDeployment.provider}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground mb-1">Framework</div>
-                      <div>{selectedDeployment.analysis?.framework || 'Unknown'}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground mb-1">Project Type</div>
-                      <div>{selectedDeployment.analysis?.type || 'Unknown'}</div>
-                    </div>
-                    {selectedDeployment.url && (
-                      <div className="col-span-2">
-                        <div className="text-sm font-medium text-muted-foreground mb-1">Live URL</div>
-                        <div className="flex items-center gap-2">
-                          <a 
-                            href={selectedDeployment.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-blue-500 hover:text-blue-600 underline"
-                          >
-                            {selectedDeployment.url}
-                          </a>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(selectedDeployment.url!, '_blank')}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
+        {/* Deployments List */}
+        <Card className="glass-card rounded-xl p-6">
+          {filteredDeployments.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Plus className="h-8 w-8 text-indigo-400" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2 text-gray-300">No deployments found</h3>
+              <p className="text-gray-400 mb-4">Get started by creating your first deployment.</p>
+              <Button 
+                onClick={() => setIsCreateModalOpen(true)}
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-full"
+              >
+                Create Deployment
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-6">
+              {filteredDeployments.filter(d => d && d.id).map((deployment) => (
+                <Card key={deployment.id} className="glass-card card-hover rounded-xl p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-4 mb-3">
+                        <div className="font-mono text-sm text-gray-300 bg-black/20 px-3 py-1 rounded-full">
+                          {deployment.id ? deployment.id.slice(0, 8) : 'unknown'}
+                        </div>
+                        <Badge className={`gap-1 ${getStatusColor(deployment.status)} border-current/30`}>
+                          {getStatusIcon(deployment.status)}
+                          {deployment.status}
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div>
+                          <div className="text-sm text-gray-400 mb-1">Repository</div>
+                          <div className="font-medium text-white truncate">
+                            {deployment.gitUrl ? deployment.gitUrl.replace('https://github.com/', '').replace('.git', '') : 'Unknown'}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <div className="text-sm text-gray-400 mb-1">Provider</div>
+                          <div className="text-white capitalize">
+                            {deployment.provider || 'Netlify'}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <div className="text-sm text-gray-400 mb-1">Deployed</div>
+                          <div className="text-sm text-white">
+                            {new Date(deployment.createdAt).toLocaleDateString()}
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedDeploymentId(deployment.id);
+                          setIsLogsModalOpen(true);
+                        }}
+                        className="glass-card border-blue-500/20 text-blue-400 hover:bg-blue-900/10"
+                      >
+                        <Terminal className="h-3 w-3 mr-1" />
+                        Logs
+                      </Button>
+                      
+                      {deployment.netlifyUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(deployment.netlifyUrl, '_blank')}
+                          className="glass-card border-white/20 text-white hover:bg-white/10"
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          View Site
+                        </Button>
+                      )}
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteDeployment(deployment.id)}
+                        className="glass-card border-red-500/20 text-red-400 hover:bg-red-900/10"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
 
-                {/* Real-time Logs */}
-                <DeploymentLogs
-                  deploymentId={selectedDeployment.id}
-                  isActive={isDeploymentActive(selectedDeployment.status)}
-                />
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+                  {/* Docker Container Management */}
+                  {deployment.provider === 'docker' && (
+                    <div className="mt-4">
+                      <DockerContainerManager
+                        deploymentId={deployment.id}
+                        containerName={deployment.siteName || `container-${deployment.id}`}
+                        siteUrl={deployment.netlifyUrl || deployment.deployUrl || '#'}
+                        initialStatus={deployment.status === 'success' ? 'running' : 'stopped'}
+                      />
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {filteredDeployments.length > 0 && (
+            <div className="mt-8 text-center text-sm text-gray-400">
+              Showing {filteredDeployments.length} deployments
+            </div>
+          )}
+        </Card>
       </div>
+
+      {/* Deploy Modal */}
+      <EnhancedDeployModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={handleDeploymentSuccess}
+      />
+
+      {/* Logs Modal */}
+      <LogsViewer
+        isOpen={isLogsModalOpen}
+        onClose={() => {
+          setIsLogsModalOpen(false);
+          setSelectedDeploymentId(null);
+        }}
+        deploymentId={selectedDeploymentId}
+      />
     </div>
   );
 }
-
-export default DeploymentsPage;
