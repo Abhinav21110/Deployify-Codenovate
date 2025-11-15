@@ -1,75 +1,18 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { useBlurReveal } from '@/hooks/useBlurReveal';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Github, Sparkles, Rocket, Settings } from 'lucide-react';
-import { toast } from 'sonner';
+import { Sparkles, Rocket, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { apiClient, deploymentRequestSchema, DeploymentRequest } from '@/lib/api';
-import { DeployModal } from '@/components/DeployModal';
+import { EnhancedDeployModal } from '@/components/EnhancedDeployModal';
+import { DeploymentLogs } from '@/components/DeploymentLogs';
 
 export default function Features() {
   useBlurReveal();
-  const [repoUrl, setRepoUrl] = useState('');
-  const [branch, setBranch] = useState('main');
-  const [environment, setEnvironment] = useState<'school' | 'staging' | 'prod'>('school');
-  const [budget, setBudget] = useState<'free' | 'low' | 'any'>('free');
-  const [preferProviders, setPreferProviders] = useState<string[]>([]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
+  const [selectedRepoUrl, setSelectedRepoUrl] = useState('');
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
-  
-  const deployMutation = useMutation({
-    mutationFn: (data: DeploymentRequest) => apiClient.createDeployment(data),
-    onSuccess: (response) => {
-      toast.success('Deployment started successfully!');
-      setSelectedDeployment(response.deploymentId);
-    },
-    onError: (error: any) => {
-      toast.error(`Failed to start deployment: ${error.message}`);
-    },
-  });
-
-  const handleDeploy = async () => {
-    try {
-      const deploymentData = deploymentRequestSchema.parse({
-        repoUrl,
-        branch: branch || 'main',
-        environment,
-        budget,
-        preferProviders: preferProviders.length > 0 ? preferProviders : undefined,
-      });
-
-      await deployMutation.mutateAsync(deploymentData);
-    } catch (error: any) {
-      if (error.errors) {
-        // Zod validation errors
-        const errorMessage = error.errors.map((e: any) => e.message).join(', ');
-        toast.error(`Validation error: ${errorMessage}`);
-      } else {
-        toast.error('Failed to deploy');
-      }
-    }
-  };
-
-  const toggleProvider = (provider: string) => {
-    setPreferProviders(prev => 
-      prev.includes(provider) 
-        ? prev.filter(p => p !== provider)
-        : [...prev, provider]
-    );
-  };
-
-  const isValidGitHubUrl = (url: string) => {
-    return /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/.test(url);
-  };
-
-  const canDeploy = repoUrl.trim() && isValidGitHubUrl(repoUrl) && !deployMutation.isPending;
 
   const sampleRepos = [
     {
@@ -141,10 +84,13 @@ export default function Features() {
               {sampleRepos.map((repo, index) => (
                 <div
                   key={index}
-                  onClick={() => setRepoUrl(repo.url)}
+                  onClick={() => {
+                    setSelectedRepoUrl(repo.url);
+                    setIsDeployModalOpen(true);
+                  }}
                   className={cn(
                     "p-6 rounded-xl glass-card cursor-pointer card-hover transition-all",
-                    repoUrl === repo.url && "ring-2 ring-purple-400"
+                    selectedRepoUrl === repo.url && "ring-2 ring-purple-400"
                   )}
                 >
                   <div className="flex items-start gap-4">
@@ -171,170 +117,52 @@ export default function Features() {
           </Card>
         </div>
 
-        {/* Deployment Form */}
-        <div className="max-w-4xl mx-auto space-y-8 blur-reveal blur-reveal-delay-200">
-          {/* Repository Input */}
-          <Card className="p-8 glass-card">
-            <div className="flex items-center gap-4 mb-6">
-              <Github className="h-6 w-6 text-indigo-400" />
-              <h2 className="text-2xl font-display font-bold" style={{color: '#e8e8f0'}}>Repository Configuration</h2>
-            </div>
-            
-            <div className="space-y-6">
+        {/* Deploy Your Own Project Section */}
+        <div className="max-w-4xl mx-auto blur-reveal blur-reveal-delay-200">
+          <Card className="p-8 glass-card text-center">
+            <div className="flex flex-col items-center gap-6">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                <Rocket className="h-8 w-8 text-white" />
+              </div>
               <div>
-                <Label htmlFor="repo-url" className="text-sm font-medium" style={{color: '#e8e8f0'}}>
-                  GitHub Repository URL *
-                </Label>
-                <Input
-                  id="repo-url"
-                  type="text"
-                  placeholder="https://github.com/username/repository"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-gray-400 focus:bg-white/20"
-                />
-                {repoUrl && !isValidGitHubUrl(repoUrl) && (
-                  <p className="text-red-400 text-sm mt-1">Please enter a valid GitHub repository URL</p>
-                )}
+                <h2 className="text-3xl font-display font-bold mb-4" style={{color: '#e8e8f0'}}>
+                  Deploy Your Own Project
+                </h2>
+                <p className="text-lg mb-6" style={{color: '#d8d8e8'}}>
+                  Ready to deploy your own repository? Use our enhanced deployment wizard with intelligent provider selection, credential management, and advanced configuration options.
+                </p>
               </div>
-
-              <div className="grid md:grid-cols-3 gap-6">
-                <div>
-                  <Label htmlFor="branch" className="text-sm font-medium" style={{color: '#e8e8f0'}}>
-                    Branch
-                  </Label>
-                  <Input
-                    id="branch"
-                    type="text"
-                    placeholder="main"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                    className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-gray-400 focus:bg-white/20"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="environment" className="text-sm font-medium" style={{color: '#e8e8f0'}}>
-                    Environment
-                  </Label>
-                  <Select value={environment} onValueChange={(value: any) => setEnvironment(value)}>
-                    <SelectTrigger className="mt-2 bg-white/10 border-white/30 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="school">School (Free)</SelectItem>
-                      <SelectItem value="staging">Staging (Low Cost)</SelectItem>
-                      <SelectItem value="prod">Production (Any Budget)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="budget" className="text-sm font-medium" style={{color: '#e8e8f0'}}>
-                    Budget Preference
-                  </Label>
-                  <Select value={budget} onValueChange={(value: any) => setBudget(value)}>
-                    <SelectTrigger className="mt-2 bg-white/10 border-white/30 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="free">Free Only</SelectItem>
-                      <SelectItem value="low">Low Cost ($0-20/mo)</SelectItem>
-                      <SelectItem value="any">Any Budget</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <Button
+                onClick={() => setIsDeployModalOpen(true)}
+                size="lg"
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white px-8 py-4 text-lg font-semibold rounded-full"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                Create New Deployment
+              </Button>
             </div>
           </Card>
-
-          {/* Advanced Options */}
-          <Card className="p-8 glass-card">
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-3 w-full text-left mb-4 hover:opacity-80 transition-opacity"
-            >
-              <Settings className="h-5 w-5 text-purple-400" />
-              <h3 className="text-lg font-display font-bold" style={{color: '#e8e8f0'}}>Advanced Options</h3>
-              <div className={cn("ml-auto transition-transform", showAdvanced && "rotate-180")}>
-                ▼
-              </div>
-            </button>
-            
-            {showAdvanced && (
-              <div className="space-y-6 border-t border-white/10 pt-6">
-                <div>
-                  <Label className="text-sm font-medium mb-4 block" style={{color: '#e8e8f0'}}>
-                    Preferred Deployment Providers
-                  </Label>
-                  <div className="grid grid-cols-2 gap-4">
-                    {providers.map((provider) => (
-                      <div
-                        key={provider.id}
-                        onClick={() => toggleProvider(provider.id)}
-                        className={cn(
-                          "p-4 rounded-lg border cursor-pointer transition-all",
-                          preferProviders.includes(provider.id)
-                            ? "bg-purple-500/20 border-purple-400/50"
-                            : "bg-white/5 border-white/20 hover:border-white/40"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            checked={preferProviders.includes(provider.id)}
-                            onChange={() => toggleProvider(provider.id)}
-                            className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
-                          />
-                          <div className="text-2xl">{provider.icon}</div>
-                          <div>
-                            <h4 className="font-medium" style={{color: '#e8e8f0'}}>{provider.name}</h4>
-                            <p className="text-xs" style={{color: '#b8b8c8'}}>{provider.description}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          {/* Deploy Button */}
-          <div className="text-center">
-            <Button
-              onClick={handleDeploy}
-              disabled={!canDeploy}
-              size="lg"
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white px-12 py-6 text-lg font-semibold"
-            >
-              {deployMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                  Starting Deployment...
-                </>
-              ) : (
-                <>
-                  <Rocket className="mr-3 h-5 w-5" />
-                  Deploy Now
-                </>
-              )}
-            </Button>
-            
-            {!canDeploy && repoUrl && (
-              <p className="text-red-400 text-sm mt-2">
-                Please enter a valid GitHub repository URL
-              </p>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Deploy Modal */}
+      {/* Enhanced Deploy Modal */}
+      <EnhancedDeployModal
+        isOpen={isDeployModalOpen}
+        onClose={() => {
+          setIsDeployModalOpen(false);
+          setSelectedRepoUrl('');
+        }}
+        onSuccess={(deploymentId) => {
+          setSelectedDeployment(deploymentId);
+          setIsDeployModalOpen(false);
+        }}
+      />
+
+      {/* Deployment Logs */}
       {selectedDeployment && (
-        <DeployModal
-          isOpen={!!selectedDeployment}
-          onClose={() => setSelectedDeployment(null)}
+        <DeploymentLogs
           deploymentId={selectedDeployment}
+          isActive={!!selectedDeployment}
         />
       )}
     </div>

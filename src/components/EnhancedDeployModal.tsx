@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, GitBranch, Cloud, Settings, Zap, Info } from 'lucide-react';
+import { Loader2, GitBranch, Cloud, Settings, Zap, Info, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -43,7 +43,7 @@ export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
     budget: 'free',
     config: {
       name: '',
-      buildCommand: '',
+      buildCommand: '', // Auto-detected if empty
       buildDirectory: '',
       environmentVariables: {},
     },
@@ -343,42 +343,56 @@ export const EnhancedDeployModal: React.FC<EnhancedDeployModalProps> = ({
 
               {/* Advanced Config Tab */}
               <TabsContent value="advanced" className="space-y-4">
+                <div className="mb-4 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-500 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-medium text-blue-700 dark:text-blue-300">Smart Auto-Detection</p>
+                      <p className="text-blue-600 dark:text-blue-400">
+                        Leave fields empty to let Deployify automatically detect your build commands, output directories, and common environment variables from your project configuration.
+                      </p>
+                    </div>
+                  </div>
+                </div>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="build-cmd">Custom Build Command</Label>
+                      <Label htmlFor="build-cmd">Build Command <span className="text-muted-foreground">(Optional)</span></Label>
                       <Input
                         id="build-cmd"
-                        placeholder="npm run build"
+                        placeholder="Leave empty for auto-detection"
                         value={formData.config?.buildCommand || ''}
                         onChange={(e) => setFormData({
                           ...formData,
                           config: { ...formData.config, buildCommand: e.target.value }
                         })}
                       />
+                      <p className="text-xs text-muted-foreground">We'll automatically detect your build command from package.json</p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="build-dir">Build Directory</Label>
+                      <Label htmlFor="build-dir">Build Directory <span className="text-muted-foreground">(Optional)</span></Label>
                       <Input
                         id="build-dir"
-                        placeholder="dist"
+                        placeholder="Auto-detected (e.g., dist, build)"
                         value={formData.config?.buildDirectory || ''}
                         onChange={(e) => setFormData({
                           ...formData,
                           config: { ...formData.config, buildDirectory: e.target.value }
                         })}
                       />
+                      <p className="text-xs text-muted-foreground">We'll automatically detect your build output directory</p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Environment Variables</Label>
+                      <Label>Environment Variables <span className="text-muted-foreground">(Optional)</span></Label>
                       <Button type="button" variant="outline" size="sm" onClick={addEnvVar}>
                         Add Variable
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground mb-2">Add custom environment variables for your deployment. Common variables are often auto-detected.</p>
                     <div className="space-y-2">
                       {envVars.map((env, index) => (
                         <div key={index} className="flex gap-2">
