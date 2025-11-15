@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Sparkles, Settings, LogOut } from 'lucide-react';
+import { Home, BookOpen, Sparkles, Settings, LogOut, Rocket } from 'lucide-react';
 import { Dock, DockIcon, DockItem, DockLabel } from '@/components/ui/dock';
 import { toast } from 'sonner';
 
@@ -7,6 +7,7 @@ const navItems = [
   { title: 'Home', icon: Home, href: '/' },
   { title: 'Info', icon: BookOpen, href: '/info' },
   { title: 'Features', icon: Sparkles, href: '/features' },
+  { title: 'Deployments', icon: Rocket, href: '/deployments' },
   { title: 'Settings', icon: Settings, href: '/settings' },
 ];
 

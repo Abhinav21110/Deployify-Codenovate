@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: deployify-postgres
+    environment:
+      POSTGRES_DB: deployify
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Redis for BullMQ job queue
+  redis:
+    image: redis:7-alpine
+    container_name: deployify-redis
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
+  # MinIO for object storage (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: deployify-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+
+  # Docker-in-Docker for build workers
+  docker:
+    image: docker:24-dind
+    container_name: deployify-docker
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    ports:
+      - '2376:2376'
+    volumes:
+      - docker_certs:/certs/client
+      - docker_data:/var/lib/docker
+    restart: unless-stopped
+
+  # Deployify backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: deployify-backend
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: deployify
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      DOCKER_HOST: tcp://docker:2376
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: 1
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - docker_certs:/certs/client:ro
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - docker
+    restart: unless-stopped
+
+  # Frontend development server
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: development
+    container_name: deployify-frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api
+    ports:
+      - '8080:8080'
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
+  docker_certs:
+  docker_data:
+
+networks:
+  default:
+    name: deployify-network

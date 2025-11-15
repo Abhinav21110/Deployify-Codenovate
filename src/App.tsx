@@ -8,11 +8,19 @@ import Navigation from "@/components/Navigation";
 import Home from "./pages/Home";
 import Info from "./pages/Info";
 import Features from "./pages/Features";
+import Deployments from "./pages/Deployments";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -26,6 +34,7 @@ const App = () => (
           <Route path="/" element={<Home />} />
           <Route path="/info" element={<Info />} />
           <Route path="/features" element={<Features />} />
+          <Route path="/deployments" element={<Deployments />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/auth" element={<Auth />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
