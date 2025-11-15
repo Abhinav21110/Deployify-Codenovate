@@ -7,6 +7,7 @@ import { Sparkles, Rocket, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EnhancedDeployModal } from '@/components/EnhancedDeployModal';
 import { DeploymentLogs } from '@/components/DeploymentLogs';
+import { toast } from 'sonner';
 
 export default function Features() {
   useBlurReveal();
@@ -155,6 +156,11 @@ export default function Features() {
         onSuccess={(deploymentId) => {
           setSelectedDeployment(deploymentId);
           setIsDeployModalOpen(false);
+          // Show toast notification with deployment info
+          toast.success(`🚀 Deployment started! ID: ${deploymentId.slice(0, 8)}...`, {
+            description: "Your project is being built and deployed. Watch the logs below for real-time progress.",
+            duration: 5000,
+          });
         }}
       />
 

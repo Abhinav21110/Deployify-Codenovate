@@ -55,7 +55,7 @@ export class LoggingService {
     });
 
     // Notify subscribers immediately (for real-time streaming)
-    this.notifySubscribers(deploymentId, log);
+    await this.notifySubscribers(deploymentId, log);
 
     this.logger.debug(`Added log for deployment ${deploymentId}: ${level} - ${message}`);
 
@@ -242,17 +242,21 @@ export class LoggingService {
     }
   }
 
-  private notifySubscribers(deploymentId: string, log: DeploymentLog): void {
+  private async notifySubscribers(deploymentId: string, log: DeploymentLog): Promise<void> {
     const subscribers = this.logSubscribers.get(deploymentId);
     if (subscribers && subscribers.length > 0) {
       this.logger.debug(`Notifying ${subscribers.length} subscribers for deployment ${deploymentId}`);
-      subscribers.forEach((callback, index) => {
+      
+      // Use Promise.all to notify all subscribers concurrently
+      const notifications = subscribers.map(async (callback, index) => {
         try {
-          callback(log);
+          await callback(log);
         } catch (error) {
           this.logger.error(`Error notifying log subscriber ${index} for deployment ${deploymentId}:`, error);
         }
       });
+      
+      await Promise.all(notifications);
     } else {
       this.logger.debug(`No subscribers found for deployment ${deploymentId}`);
     }

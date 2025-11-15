@@ -18,7 +18,8 @@ import {
   AlertCircle,
   Info,
   Clock,
-  Loader2 
+  Loader2,
+  RefreshCw 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiClient, queryKeys, DeploymentLog } from '@/lib/api';
@@ -39,12 +40,13 @@ export const DeploymentLogs: React.FC<DeploymentLogsProps> = ({
   const [stepFilter, setStepFilter] = useState<string>('all');
   const [autoScroll, setAutoScroll] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   // Get initial logs
-  const { data: initialLogsData, isLoading } = useQuery({
+  const { data: initialLogsData, isLoading, refetch: refetchLogs } = useQuery({
     queryKey: queryKeys.deploymentLogs(deploymentId),
     queryFn: () => apiClient.getDeploymentLogs(deploymentId),
     refetchInterval: isActive ? 10000 : false, // 10 seconds
@@ -202,6 +204,58 @@ export const DeploymentLogs: React.FC<DeploymentLogsProps> = ({
     return steps;
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      // Close existing SSE connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      
+      // Refresh logs
+      const result = await refetchLogs();
+      if (result.data?.logs) {
+        setLogs(result.data.logs);
+      }
+      
+      // Reconnect SSE if deployment is active
+      if (isActive) {
+        setTimeout(() => {
+          const eventSource = apiClient.createLogStream(deploymentId);
+          eventSourceRef.current = eventSource;
+          
+          eventSource.onopen = () => {
+            setIsConnected(true);
+          };
+          
+          eventSource.onmessage = (event) => {
+            try {
+              const logEntry = JSON.parse(event.data);
+              if (event.type === 'log' && logEntry.deploymentId) {
+                setLogs(prevLogs => {
+                  const existingIndex = prevLogs.findIndex(log => log.id === logEntry.id);
+                  if (existingIndex >= 0) return prevLogs;
+                  return [...prevLogs, logEntry];
+                });
+              }
+            } catch (error) {
+              console.error('Failed to parse log event:', error);
+            }
+          };
+          
+          eventSource.onerror = () => {
+            setIsConnected(false);
+          };
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Failed to refresh logs:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -261,6 +315,19 @@ export const DeploymentLogs: React.FC<DeploymentLogsProps> = ({
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="text-xs"
+            >
+              <RefreshCw className={cn(
+                "h-3 w-3 mr-1",
+                isRefreshing && "animate-spin"
+              )} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
             <Button
               variant="outline"
               size="sm"

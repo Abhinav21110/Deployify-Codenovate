@@ -231,6 +231,7 @@ export class ContainerService {
   ): Promise<BuildResult> {
     const buildImage = this.getBuildImage(detectedStack);
     const buildCommands = this.getBuildCommands(detectedStack);
+    let container = null;
 
     try {
       onLog('info', `Starting build with ${buildImage}...`);
@@ -246,8 +247,10 @@ export class ContainerService {
         };
       }
 
+      onLog('info', `Executing build commands: ${buildCommands.join(' && ')}`);
+
       // Create container for building
-      const container = await this.docker.createContainer({
+      container = await this.docker.createContainer({
         Image: buildImage,
         Cmd: ['sh', '-c', buildCommands.join(' && ')],
         WorkingDir: '/workspace',
@@ -255,6 +258,7 @@ export class ContainerService {
           Binds: [`${workspaceDir}:/workspace`],
           Memory: 4 * 1024 * 1024 * 1024, // 4GB
           CpuShares: 1024,
+          NetworkMode: 'default', // Allow network access for npm installs
         },
         AttachStdout: true,
         AttachStderr: true,
@@ -266,22 +270,33 @@ export class ContainerService {
         stderr: true,
       });
 
-      // Monitor build output
+      // Monitor build output with better message parsing
       stream.on('data', (chunk) => {
-        const message = chunk.toString().trim();
-        if (message) {
+        const message = chunk.toString().replace(/[\x00-\x08]/g, '').trim();
+        if (message && !message.includes('npm warn config')) {
           onLog('info', message);
         }
       });
 
       await container.start();
-      const result = await container.wait();
+      
+      // Add timeout for container execution (10 minutes)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Build timeout: Container execution exceeded 10 minutes'));
+        }, 10 * 60 * 1000);
+      });
+
+      const result = await Promise.race([
+        container.wait(),
+        timeoutPromise
+      ]);
 
       if (result.StatusCode !== 0) {
         throw new Error(`Build failed with exit code ${result.StatusCode}`);
       }
 
-      onLog('info', 'Build completed successfully');
+      onLog('success', 'Build completed successfully');
 
       // Create artifact archive for static deployments
       const artifactPath = await this.createArtifact(workspaceDir, detectedStack);
@@ -294,6 +309,16 @@ export class ContainerService {
       };
     } catch (error) {
       onLog('error', `Container build failed: ${error.message}`);
+      
+      // Cleanup container on error
+      if (container) {
+        try {
+          await container.remove();
+        } catch (cleanupError) {
+          this.logger.warn(`Failed to cleanup container: ${cleanupError.message}`);
+        }
+      }
+      
       return {
         success: false,
         error: error.message,
@@ -320,16 +345,17 @@ export class ContainerService {
   private getBuildCommands(detectedStack: DetectedStack): string[] {
     const commands: string[] = [];
 
-    // Install dependencies
+    // Install dependencies with optimized commands
     switch (detectedStack.packageManager) {
       case 'npm':
-        commands.push('npm ci --production=false');
+        // Install all dependencies (including devDependencies for build tools)
+        commands.push('npm ci --prefer-offline --no-audit');
         break;
       case 'yarn':
-        commands.push('yarn install --frozen-lockfile');
+        commands.push('yarn install --frozen-lockfile --prefer-offline');
         break;
       case 'pnpm':
-        commands.push('npm install -g pnpm && pnpm install');
+        commands.push('npm install -g pnpm && pnpm install --prefer-offline');
         break;
       case 'bun':
         commands.push('npm install -g bun && bun install');
