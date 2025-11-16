@@ -241,8 +241,8 @@ async function deploy(req, res) {
 
     } else if (provider === 'vercel' && deployMode === 'git-import') {
       // Import project to Vercel
-      addDeploymentLog(deploymentId, 'info', 'Creating Vercel project from repository...');
-      const result = await vercel.importProjectFromRepo(repoUrl);
+      addDeploymentLog(deploymentId, 'info', 'Deploying to Vercel from repository files...');
+      const result = await vercel.importProjectFromRepo(repoUrl, clonePath);
       
       if (result.hasDeployment) {
         addDeploymentLog(deploymentId, 'info', `Vercel deployment initiated: ${result.deploymentUrl}`);

@@ -1,4 +1,7 @@
 const axios = require('axios');
+const fs = require('fs-extra');
+const path = require('path');
+const glob = require('glob');
 
 const VERCEL_API_BASE = 'https://api.vercel.com';
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
@@ -134,7 +137,92 @@ async function waitForDeployment(deploymentId, maxWaitTime = 180000) { // 3 minu
   };
 }
 
-async function importProjectFromRepo(repoUrl) {
+async function deployFilesToVercel(projectPath, projectName) {
+  if (!VERCEL_TOKEN) {
+    throw new Error('VERCEL_TOKEN environment variable is required');
+  }
+
+  console.log('📦 Deploying files directly to Vercel...');
+  console.log('Project path:', projectPath);
+  console.log('Project name:', projectName);
+
+  try {
+    // Read all files from the project directory
+    const files = [];
+    const allFiles = glob.sync('**/*', {
+      cwd: projectPath,
+      nodir: true,
+      dot: false,
+      ignore: ['node_modules/**', '.git/**', '.env*', '*.log', 'package-lock.json', 'yarn.lock']
+    });
+
+    console.log(`Found ${allFiles.length} files to deploy`);
+
+    // Read and encode all files
+    for (const file of allFiles) {
+      const filePath = path.join(projectPath, file);
+      const content = await fs.readFile(filePath);
+      
+      // Vercel expects files in this format
+      files.push({
+        file: file,
+        data: content.toString('utf-8'),
+      });
+    }
+
+    // Check if package.json exists to detect build requirements
+    const hasPackageJson = files.some(f => f.file === 'package.json');
+    
+    // Create deployment payload according to Vercel v13 API
+    const deploymentPayload = {
+      name: projectName,
+      files: files,
+      target: 'production',
+      public: false
+    };
+
+    console.log(`Uploading ${files.length} files to Vercel...`);
+
+    const response = await axios.post(`${VERCEL_API_BASE}/v13/deployments?skipAutoDetectionConfirmation=1`, deploymentPayload, {
+      headers: {
+        'Authorization': `Bearer ${VERCEL_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity
+    });
+
+    console.log('✅ Deployment created successfully!');
+    console.log('Deployment ID:', response.data.id);
+    console.log('Deployment URL:', response.data.url);
+    console.log('Ready State:', response.data.readyState);
+
+    // Wait for deployment to complete
+    const finalStatus = await waitForDeployment(response.data.id);
+
+    const deploymentUrl = `https://${response.data.url}`;
+
+    return {
+      id: response.data.id,
+      name: projectName,
+      projectUrl: deploymentUrl,
+      deploymentUrl: deploymentUrl,
+      deployment: response.data,
+      deploymentStatus: finalStatus.success ? 'READY' : finalStatus.timeout ? 'BUILDING' : 'ERROR',
+      hasDeployment: true,
+      success: true
+    };
+
+  } catch (error) {
+    console.error('❌ Vercel file deployment failed:', error.response?.data || error.message);
+    if (error.response?.data) {
+      console.error('Full error response:', JSON.stringify(error.response.data, null, 2));
+    }
+    throw new Error(`Vercel deployment failed: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
+async function importProjectFromRepo(repoUrl, clonedPath = null) {
   if (!VERCEL_TOKEN) {
     throw new Error('VERCEL_TOKEN environment variable is required');
   }
@@ -168,8 +256,13 @@ async function importProjectFromRepo(repoUrl) {
   console.log('Sanitized project name:', sanitizedName);
 
   try {
-    // Vercel doesn't support deploying from Git without GitHub App integration
-    // So we'll create a project and let the user know they need to connect GitHub manually
+    // If we have the cloned repository path, deploy files directly
+    if (clonedPath && await fs.pathExists(clonedPath)) {
+      console.log('Deploying from local files...');
+      return await deployFilesToVercel(clonedPath, sanitizedName);
+    }
+
+    // Otherwise, create a project and return instructions
     console.log('Creating Vercel project...');
     
     const projectPayload = {
@@ -220,5 +313,6 @@ module.exports = {
   importProjectFromRepo, 
   checkDeploymentStatus, 
   createDeploymentFromGit,
-  waitForDeployment 
+  waitForDeployment,
+  deployFilesToVercel
 };
