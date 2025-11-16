@@ -354,9 +354,9 @@ export default function Deployments() {
                     <div className="mt-4">
                       <DockerContainerManager
                         deploymentId={deployment.id}
-                        containerName={deployment.siteName || `container-${deployment.id}`}
+                        containerName={deployment.containerName || deployment.siteName || `container-${deployment.id}`}
                         siteUrl={deployment.netlifyUrl || deployment.deployUrl || '#'}
-                        initialStatus={deployment.status === 'success' ? 'running' : 'stopped'}
+                        initialStatus={deployment.status === 'running' ? 'running' : 'stopped'}
                       />
                     </div>
                   )}

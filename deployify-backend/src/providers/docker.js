@@ -437,6 +437,26 @@ async function stopDockerContainer(containerName) {
   });
 }
 
+async function restartDockerContainer(containerName, imageName, port = 3000) {
+  return new Promise(async (resolve, reject) => {
+    console.log(`Restarting Docker container: ${containerName}`);
+    
+    try {
+      // First stop and remove existing container
+      await stopDockerContainer(containerName);
+      
+      // Wait a moment for cleanup
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Start new container with same configuration
+      const result = await runDockerContainer(imageName, containerName, port);
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 async function checkDockerAvailable() {
   return new Promise((resolve) => {
     const check = spawn('docker', ['--version'], { stdio: 'pipe', shell: true });
@@ -515,6 +535,7 @@ module.exports = {
   deployWithDocker,
   getContainerStatus,
   stopDockerContainer,
+  restartDockerContainer,
   createDockerDeployment,
   buildDockerImage,
   runDockerContainer,

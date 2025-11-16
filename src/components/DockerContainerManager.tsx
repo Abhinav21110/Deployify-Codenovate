@@ -44,6 +44,15 @@ export function DockerContainerManager({
       if (action === 'status') {
         setStatus(data.containerStatus);
         toast.info(`Container status: ${data.containerStatus}`);
+      } else if (action === 'restart') {
+        setStatus('running');
+        toast.success('Container restarted successfully', {
+          description: 'Your application is now running again',
+          action: data.url ? {
+            label: 'Open App',
+            onClick: () => window.open(data.url, '_blank'),
+          } : undefined,
+        });
       } else {
         setStatus(action === 'stop' ? 'stopped' : 'running');
         toast.success(`Container ${action} successful`);

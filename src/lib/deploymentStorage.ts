@@ -8,6 +8,10 @@ interface Deployment {
   createdAt: string;
   error?: string;
   provider?: string;
+  // Docker-specific fields
+  containerName?: string;
+  imageName?: string;
+  port?: number;
 }
 
 const STORAGE_KEY = 'deployify-deployments';
@@ -38,7 +42,11 @@ export const deploymentStorage = {
       deployUrl: deploymentData.siteUrl,
       status: this.mapStatus(deploymentData.status, deploymentData.provider),
       createdAt: new Date().toISOString(),
-      provider: deploymentData.provider
+      provider: deploymentData.provider,
+      // Include Docker-specific fields if present
+      ...(deploymentData.containerName && { containerName: deploymentData.containerName }),
+      ...(deploymentData.imageName && { imageName: deploymentData.imageName }),
+      ...(deploymentData.port && { port: deploymentData.port }),
     };
 
     const existingDeployments = this.getDeployments();

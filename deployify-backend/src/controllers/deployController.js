@@ -440,7 +440,7 @@ async function getLogs(req, res) {
 
 async function manageContainer(req, res) {
   const { id } = req.params;
-  const { action } = req.body; // 'stop', 'start', 'restart', 'status'
+  const { action } = req.body; // 'stop', 'restart', 'status'
   
   const deployment = deployments.get(id);
   if (!deployment || deployment.provider !== 'docker') {
@@ -448,6 +448,8 @@ async function manageContainer(req, res) {
   }
   
   const containerName = deployment.result.containerName;
+  const imageName = deployment.result.imageName;
+  const port = deployment.result.port || 3000;
   
   try {
     switch (action) {
@@ -456,6 +458,23 @@ async function manageContainer(req, res) {
         deployment.status = 'stopped';
         addDeploymentLog(id, 'info', `Container ${containerName} stopped`);
         break;
+        
+      case 'restart':
+        if (!imageName) {
+          return res.status(400).json({ error: 'Image name not found for restart' });
+        }
+        addDeploymentLog(id, 'info', `Restarting container ${containerName} with image ${imageName}`);
+        const restartResult = await docker.restartDockerContainer(containerName, imageName, port);
+        deployment.status = 'running';
+        addDeploymentLog(id, 'info', `Container ${containerName} restarted successfully`);
+        
+        return res.json({ 
+          success: true, 
+          action: 'restart',
+          containerName: containerName,
+          url: restartResult.url,
+          status: 'running'
+        });
         
       case 'status':
         const status = await docker.getContainerStatus(containerName);
@@ -466,7 +485,7 @@ async function manageContainer(req, res) {
         });
         
       default:
-        return res.status(400).json({ error: 'Invalid action' });
+        return res.status(400).json({ error: 'Invalid action. Supported actions: stop, restart, status' });
     }
     
     res.json({ 
