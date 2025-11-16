@@ -139,7 +139,7 @@ async function importProjectFromRepo(repoUrl) {
     throw new Error('VERCEL_TOKEN environment variable is required');
   }
 
-  console.log('Importing project to Vercel...');
+  console.log('Deploying project to Vercel...');
   console.log('Repository URL:', repoUrl);
 
   // Extract owner/repo from URL
@@ -153,39 +153,31 @@ async function importProjectFromRepo(repoUrl) {
   
   console.log('Extracted owner:', owner);
   console.log('Extracted repo:', repoName);
-  console.log('Full repo path:', `${owner}/${repoName}`);
   
-  // Create a more unique project name to avoid collisions
-  // Include owner name and add timestamp for uniqueness
-  const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+  // Create a unique project name
+  const timestamp = Date.now().toString().slice(-6);
   const baseProjectName = `${owner}-${repoName}-${timestamp}`;
   
-  // Sanitize project name for Vercel requirements:
-  // - Max 100 characters
-  // - Lowercase only
-  // - Can contain letters, digits, '.', '_', '-'
-  // - Cannot contain '---'
   const sanitizedName = baseProjectName
     .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '-') // Replace invalid chars with dash
-    .replace(/---+/g, '--') // Replace triple+ dashes with double dash
-    .replace(/^[-._]+|[-._]+$/g, '') // Remove leading/trailing special chars
-    .substring(0, 100); // Limit to 100 characters
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/---+/g, '--')
+    .replace(/^[-._]+|[-._]+$/g, '')
+    .substring(0, 100);
 
-  console.log('Base project name:', baseProjectName);
   console.log('Sanitized project name:', sanitizedName);
 
   try {
-    // Step 1: Create the project
+    // Vercel doesn't support deploying from Git without GitHub App integration
+    // So we'll create a project and let the user know they need to connect GitHub manually
+    console.log('Creating Vercel project...');
+    
     const projectPayload = {
       name: sanitizedName,
-      gitRepository: {
-        type: 'github',
-        repo: `${owner}/${repoName}`
-      }
+      framework: null, // Auto-detect
     };
     
-    console.log('Creating Vercel project with payload:', JSON.stringify(projectPayload, null, 2));
+    console.log('Project payload:', JSON.stringify(projectPayload, null, 2));
     
     const projectResponse = await axios.post(`${VERCEL_API_BASE}/v10/projects`, projectPayload, {
       headers: {
@@ -194,60 +186,29 @@ async function importProjectFromRepo(repoUrl) {
       }
     });
 
-    console.log('Vercel project created:', projectResponse.data.name);
+    console.log('✅ Vercel project created successfully');
     console.log('Project ID:', projectResponse.data.id);
-    console.log('Connected repository:', projectResponse.data.link?.repo);
+    console.log('Project name:', projectResponse.data.name);
     
-    // Step 2: Create deployment from Git
-    console.log('Creating deployment from Git repository...');
-    const deployment = await createDeploymentFromGit(
-      projectResponse.data.id, 
-      owner, 
-      repoName, 
-      sanitizedName
-    );
+    const projectUrl = `https://${sanitizedName}.vercel.app`;
     
-    let deploymentUrl = `https://${sanitizedName}.vercel.app`;
-    let deploymentStatus = 'created';
-    
-    if (deployment) {
-      deploymentUrl = `https://${deployment.url}`;
-      deploymentStatus = deployment.readyState || 'BUILDING';
-      
-      console.log('✅ Deployment initiated successfully');
-      console.log('🔗 Deployment URL:', deploymentUrl);
-      console.log('📊 Initial status:', deploymentStatus);
-      
-      // Wait for deployment to complete (with timeout)
-      console.log('⏳ Waiting for deployment to complete...');
-      const finalStatus = await waitForDeployment(deployment.id);
-      
-      if (finalStatus.success) {
-        deploymentUrl = finalStatus.url;
-        deploymentStatus = 'READY';
-        console.log('🎉 Deployment completed! Live at:', deploymentUrl);
-      } else if (finalStatus.timeout) {
-        console.log('⏰ Deployment timeout - but it may still complete');
-        deploymentStatus = 'BUILDING';
-      } else {
-        console.log('❌ Deployment failed:', finalStatus.error);
-        deploymentStatus = 'ERROR';
-      }
-    } else {
-      console.log('❌ Could not create deployment - trying project-only approach');
-      console.log('🔄 Vercel may auto-deploy from GitHub connection');
-    }
-    
+    // Return project info with instructions
     return {
-      ...projectResponse.data,
-      projectUrl: deploymentUrl,
-      deploymentUrl: deploymentUrl,
-      deployment: deployment,
-      deploymentStatus: deploymentStatus,
-      hasDeployment: !!deployment,
-      autoDeployNote: deployment 
-        ? 'Deployment initiated - building now' 
-        : 'Vercel will automatically deploy from GitHub within a few minutes'
+      id: projectResponse.data.id,
+      name: sanitizedName,
+      projectUrl: projectUrl,
+      deploymentUrl: projectUrl,
+      hasDeployment: false,
+      success: true,
+      manualSetupRequired: true,
+      setupInstructions: [
+        '1. Go to your Vercel dashboard',
+        '2. Find the project: ' + sanitizedName,
+        '3. Click "Settings" → "Git"',
+        '4. Connect to GitHub repository: ' + owner + '/' + repoName,
+        '5. Vercel will automatically deploy'
+      ],
+      autoDeployNote: `Project created! To deploy from Git: Go to Vercel dashboard → ${sanitizedName} → Settings → Git → Connect to ${owner}/${repoName}`
     };
   } catch (error) {
     console.error('Vercel import error:', error.response?.data || error.message);

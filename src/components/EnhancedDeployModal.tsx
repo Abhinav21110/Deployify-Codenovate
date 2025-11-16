@@ -30,9 +30,11 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
   }, [provider]);
   const [buildDir, setBuildDir] = useState('');
   const [isInspecting, setIsInspecting] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentStep, setDeploymentStep] = useState('');
   const [inspectionResult, setInspectionResult] = useState<any>(null);
+  const [summaryResult, setSummaryResult] = useState<any>(null);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
@@ -87,6 +89,58 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
       });
     } finally {
       setIsInspecting(false);
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (!gitUrl.trim()) {
+      toast.error('Please enter a Git repository URL');
+      return;
+    }
+
+    if (!gitUrl.includes('github.com')) {
+      toast.error('Please enter a valid GitHub repository URL');
+      return;
+    }
+
+    setIsSummarizing(true);
+    setSummaryResult(null);
+
+    try {
+      const response = await fetch(`${backendUrl}/api/repo/summarize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          repoUrl: gitUrl.trim(),
+          branch: 'main'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Summarization failed');
+      }
+
+      setSummaryResult(data);
+      
+      if (data.aiAnalysis) {
+        toast.success('Repository analysis complete!');
+      } else if (data.aiError) {
+        toast.error('AI analysis failed', {
+          description: data.aiError,
+        });
+      }
+
+    } catch (error) {
+      console.error('Summarization error:', error);
+      toast.error('Repository summarization failed', {
+        description: error instanceof Error ? error.message : 'Failed to summarize repository',
+      });
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -218,11 +272,12 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
   };
 
   const handleClose = () => {
-    if (!isDeploying && !isInspecting) {
+    if (!isDeploying && !isInspecting && !isSummarizing) {
       onClose();
       setGitUrl('');
       setBuildDir('');
       setInspectionResult(null);
+      setSummaryResult(null);
       setDeploymentStep('');
     }
   };
@@ -251,23 +306,39 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
                   placeholder="https://github.com/username/repository"
                   value={gitUrl}
                   onChange={(e) => setGitUrl(e.target.value)}
-                  disabled={isDeploying || isInspecting}
+                  disabled={isDeploying || isInspecting || isSummarizing}
                   className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/50 text-sm"
                 />
-                <Button
-                  onClick={handleInspect}
-                  disabled={isInspecting || isDeploying || !gitUrl.trim()}
-                  variant="outline"
-                  size="sm"
-                  className="border-white/20 text-white hover:bg-white/10 w-full sm:w-auto"
-                >
-                  {isInspecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Search className="h-4 w-4 mr-2" />
-                  )}
-                  {isInspecting ? 'Inspecting...' : 'Inspect'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleInspect}
+                    disabled={isInspecting || isSummarizing || isDeploying || !gitUrl.trim()}
+                    variant="outline"
+                    size="sm"
+                    className="border-white/20 text-white hover:bg-white/10 flex-1 sm:flex-none"
+                  >
+                    {isInspecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    {isInspecting ? 'Inspecting...' : 'Inspect'}
+                  </Button>
+                  <Button
+                    onClick={handleSummarize}
+                    disabled={isInspecting || isSummarizing || isDeploying || !gitUrl.trim()}
+                    variant="outline"
+                    size="sm"
+                    className="border-purple-500/30 text-purple-300 hover:bg-purple-500/10 flex-1 sm:flex-none"
+                  >
+                    {isSummarizing ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    {isSummarizing ? 'Analyzing...' : 'Summarize'}
+                  </Button>
+                </div>
               </div>
               <p className="text-xs md:text-sm text-white/70">
                 Only public GitHub repositories are supported
@@ -276,33 +347,136 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
 
           {/* Inspection Results */}
           {inspectionResult && (
-            <Card className="p-4 bg-white/5 border-white/20">
-              <div className="flex items-start gap-3">
-                {inspectionResult.hasPrebuilt ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-400 mt-0.5" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 text-orange-400 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <p className="font-medium text-white mb-2">
-                    {inspectionResult.hasPrebuilt ? 'Prebuilt folders found' : 'No prebuilt folders found'}
-                  </p>
+            <>
+              <Card className="p-4 bg-white/5 border-white/20">
+                <div className="flex items-start gap-3">
                   {inspectionResult.hasPrebuilt ? (
-                    <div className="flex gap-2 flex-wrap">
-                      {inspectionResult.candidates.map((folder: string) => (
-                        <Badge key={folder} variant="secondary" className="text-xs">
-                          {folder}
-                        </Badge>
-                      ))}
-                    </div>
+                    <CheckCircle2 className="h-5 w-5 text-green-400 mt-0.5" />
                   ) : (
-                    <p className="text-sm text-white/70">
-                      Consider using git-import mode to let the provider build your project
-                    </p>
+                    <AlertCircle className="h-5 w-5 text-orange-400 mt-0.5" />
                   )}
+                  <div className="flex-1">
+                    <p className="font-medium text-white mb-2">
+                      {inspectionResult.hasPrebuilt ? 'Prebuilt folders found' : 'No prebuilt folders found'}
+                    </p>
+                    {inspectionResult.hasPrebuilt ? (
+                      <div className="flex gap-2 flex-wrap">
+                        {inspectionResult.candidates.map((folder: string) => (
+                          <Badge key={folder} variant="secondary" className="text-xs">
+                            {folder}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-white/70">
+                        Consider using git-import mode to let the provider build your project
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+
+              {/* AI Analysis Results */}
+              {summaryResult?.aiAnalysis && (
+                <Card className="p-4 bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-400/30">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="text-xl">✨</div>
+                      <h3 className="font-bold text-white">AI Analysis</h3>
+                    </div>
+
+                    {/* Project Overview */}
+                    <div>
+                      <p className="text-sm text-white/90 mb-3">{summaryResult.aiAnalysis.projectOverview}</p>
+                    </div>
+
+                    {/* Tech Stack */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-white/80 mb-2">Tech Stack</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-white/60">Framework:</span>
+                          <span className="ml-2 text-white">{summaryResult.aiAnalysis.techStack.framework}</span>
+                        </div>
+                        <div>
+                          <span className="text-white/60">Language:</span>
+                          <span className="ml-2 text-white">{summaryResult.aiAnalysis.techStack.language}</span>
+                        </div>
+                        <div>
+                          <span className="text-white/60">Build Tool:</span>
+                          <span className="ml-2 text-white">{summaryResult.aiAnalysis.techStack.buildTool}</span>
+                        </div>
+                        <div>
+                          <span className="text-white/60">Package Manager:</span>
+                          <span className="ml-2 text-white">{summaryResult.aiAnalysis.techStack.packageManager}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Build Info */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-white/80 mb-2">Build Configuration</h4>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">Build</Badge>
+                          <code className="text-white bg-black/30 px-2 py-0.5 rounded">{summaryResult.aiAnalysis.buildCommand}</code>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">Output</Badge>
+                          <code className="text-white bg-black/30 px-2 py-0.5 rounded">{summaryResult.aiAnalysis.outputDirectory}</code>
+                        </div>
+                        {summaryResult.aiAnalysis.estimatedBuildTime && (
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">Time</Badge>
+                            <span className="text-white">{summaryResult.aiAnalysis.estimatedBuildTime}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Deployment Recommendation */}
+                    {summaryResult.aiAnalysis.deploymentRecommendations && (
+                      <div className="bg-white/5 p-3 rounded-lg">
+                        <h4 className="text-sm font-semibold text-green-400 mb-2">💡 Recommended Deployment</h4>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/70">Provider:</span>
+                            <Badge className="bg-green-500/20 text-green-300 border-green-500/30">
+                              {summaryResult.aiAnalysis.deploymentRecommendations.bestProvider}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/70">Mode:</span>
+                            <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                              {summaryResult.aiAnalysis.deploymentRecommendations.deployMode}
+                            </Badge>
+                          </div>
+                          {summaryResult.aiAnalysis.deploymentRecommendations.reasons && (
+                            <ul className="mt-2 space-y-1 text-white/70">
+                              {summaryResult.aiAnalysis.deploymentRecommendations.reasons.map((reason: string, idx: number) => (
+                                <li key={idx}>• {reason}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Potential Issues */}
+                    {summaryResult.aiAnalysis.potentialIssues && summaryResult.aiAnalysis.potentialIssues.length > 0 && (
+                      <div className="bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
+                        <h4 className="text-sm font-semibold text-orange-300 mb-2">⚠️ Potential Issues</h4>
+                        <ul className="space-y-1 text-xs text-orange-200/80">
+                          {summaryResult.aiAnalysis.potentialIssues.map((issue: string, idx: number) => (
+                            <li key={idx}>• {issue}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+            </>
           )}
 
             {/* Provider Selection */}

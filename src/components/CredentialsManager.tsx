@@ -10,8 +10,12 @@ import { toast } from 'sonner';
 export function CredentialsManager() {
   const [netlifyToken, setNetlifyToken] = useState('');
   const [vercelToken, setVercelToken] = useState('');
+  const [awsAccessKey, setAwsAccessKey] = useState('');
+  const [awsSecretKey, setAwsSecretKey] = useState('');
+  const [awsRegion, setAwsRegion] = useState('us-east-1');
   const [isNetlifyTokenSet, setIsNetlifyTokenSet] = useState(false);
   const [isVercelTokenSet, setIsVercelTokenSet] = useState(false);
+  const [isAwsTokenSet, setIsAwsTokenSet] = useState(false);
 
   const handleSaveNetlifyToken = () => {
     if (!netlifyToken.trim()) {
@@ -55,12 +59,36 @@ export function CredentialsManager() {
     toast.success('Vercel credentials removed');
   };
 
+  const handleSaveAwsCredentials = () => {
+    if (!awsAccessKey.trim() || !awsSecretKey.trim()) {
+      toast.error('Please enter valid AWS credentials');
+      return;
+    }
+
+    localStorage.setItem('aws-credentials-configured', 'true');
+    setIsAwsTokenSet(true);
+    setAwsAccessKey('');
+    setAwsSecretKey('');
+    
+    toast.success('AWS credentials saved successfully!', {
+      description: 'Your AWS credentials have been securely stored.',
+    });
+  };
+
+  const handleRemoveAwsCredentials = () => {
+    localStorage.removeItem('aws-credentials-configured');
+    setIsAwsTokenSet(false);
+    toast.success('AWS credentials removed');
+  };
+
   // Check if tokens are already configured
   useEffect(() => {
     const netlifyConfigured = localStorage.getItem('netlify-token-configured') === 'true';
     const vercelConfigured = localStorage.getItem('vercel-token-configured') === 'true';
+    const awsConfigured = localStorage.getItem('aws-credentials-configured') === 'true';
     setIsNetlifyTokenSet(netlifyConfigured);
     setIsVercelTokenSet(vercelConfigured);
+    setIsAwsTokenSet(awsConfigured);
   }, []);
 
   return (
@@ -268,6 +296,131 @@ export function CredentialsManager() {
         )}
       </Card>
 
+      {/* AWS Credentials */}
+      <Card className="p-6 glass-card">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-400 to-yellow-500 flex items-center justify-center">
+            <Key className="h-6 w-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-xl font-bold text-white">AWS S3</h3>
+              {isAwsTokenSet ? (
+                <Badge className="bg-green-500/20 text-green-400 border-green-400/30">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Configured
+                </Badge>
+              ) : (
+                <Badge className="bg-orange-500/20 text-orange-400 border-orange-400/30">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Not Configured
+                </Badge>
+              )}
+            </div>
+            <p className="text-gray-400">
+              Deploy static websites to AWS S3 with CloudFront
+            </p>
+          </div>
+        </div>
+
+        {!isAwsTokenSet ? (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="awsAccessKey" className="text-white font-medium mb-2 block">
+                AWS Access Key ID
+              </Label>
+              <Input
+                id="awsAccessKey"
+                type="text"
+                placeholder="Enter your AWS Access Key ID"
+                value={awsAccessKey}
+                onChange={(e) => setAwsAccessKey(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="awsSecretKey" className="text-white font-medium mb-2 block">
+                AWS Secret Access Key
+              </Label>
+              <Input
+                id="awsSecretKey"
+                type="password"
+                placeholder="Enter your AWS Secret Access Key"
+                value={awsSecretKey}
+                onChange={(e) => setAwsSecretKey(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="awsRegion" className="text-white font-medium mb-2 block">
+                AWS Region
+              </Label>
+              <Input
+                id="awsRegion"
+                type="text"
+                placeholder="e.g., us-east-1, ap-southeast-2"
+                value={awsRegion}
+                onChange={(e) => setAwsRegion(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+              />
+            </div>
+            
+            <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-4">
+              <h4 className="font-medium text-blue-100 mb-2">How to get your AWS credentials:</h4>
+              <ol className="text-sm text-blue-200/80 space-y-1 list-decimal list-inside">
+                <li>Go to AWS IAM Console</li>
+                <li>Create a new IAM user or use existing</li>
+                <li>Attach "AmazonS3FullAccess" policy</li>
+                <li>Create access keys and copy them above</li>
+              </ol>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('https://console.aws.amazon.com/iam/home#/users', '_blank')}
+                className="mt-3 border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                Open IAM Console
+              </Button>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSaveAwsCredentials}
+                disabled={!awsAccessKey.trim() || !awsSecretKey.trim()}
+                className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white"
+              >
+                Save Credentials
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-green-500/10 border border-green-400/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <span className="font-medium text-green-100">AWS credentials configured</span>
+              </div>
+              <p className="text-sm text-green-200/80">
+                Your AWS credentials are securely stored and ready for S3 deployments.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={handleRemoveAwsCredentials}
+                className="border-red-500/20 text-red-400 hover:bg-red-900/10"
+              >
+                Remove Credentials
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* Future Providers */}
       <Card className="p-6 glass-card opacity-50">
         <div className="flex items-center gap-4 mb-4">
@@ -277,7 +430,7 @@ export function CredentialsManager() {
           <div>
             <h3 className="text-xl font-bold text-white">More Providers Coming Soon</h3>
             <p className="text-gray-400">
-              AWS Amplify, DigitalOcean, and other providers will be added in future updates
+              DigitalOcean, Heroku, and other providers will be added in future updates
             </p>
           </div>
         </div>

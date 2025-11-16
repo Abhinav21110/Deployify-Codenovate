@@ -1,11 +1,12 @@
-const express = require('express');
 const dotenv = require('dotenv');
 const path = require('path');
+
+// Load environment variables FIRST, before any other imports
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+const express = require('express');
 const inspectController = require('./controllers/inspectController');
 const deployController = require('./controllers/deployController');
-
-// Load environment variables from .env file
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Simple in-memory log storage
 const logs = [];
@@ -36,6 +37,7 @@ console.log('Environment variables loaded:');
 console.log('PORT:', process.env.PORT);
 console.log('NETLIFY_AUTH_TOKEN:', process.env.NETLIFY_AUTH_TOKEN ? 'Set' : 'Not set');
 console.log('VERCEL_TOKEN:', process.env.VERCEL_TOKEN ? 'Set' : 'Not set');
+console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? 'Set' : 'Not set');
 console.log('TEMP_DIR:', process.env.TEMP_DIR);
 
 const app = express();
@@ -58,6 +60,7 @@ app.use(express.json());
 
 // Routes
 app.post('/api/repo/inspect', inspectController.inspect);
+app.post('/api/repo/summarize', inspectController.summarize);
 app.post('/api/deploy', deployController.deploy);
 app.get('/api/deploy/status/:id', deployController.getStatus);
 app.get('/api/deploy/logs/:id', deployController.getLogs);
