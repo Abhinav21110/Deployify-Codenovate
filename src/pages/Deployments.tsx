@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { deploymentStorage, type Deployment } from '@/lib/deploymentStorage';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,17 +10,7 @@ import { EnhancedDeployModal } from '@/components/EnhancedDeployModal';
 import { LogsViewer } from '@/components/LogsViewer';
 import { DockerContainerManager } from '@/components/DockerContainerManager';
 
-interface Deployment {
-  id: string;
-  gitUrl: string;
-  siteName?: string;
-  netlifyUrl?: string;
-  deployUrl?: string;
-  status: 'success' | 'failed' | 'deploying';
-  createdAt: string;
-  error?: string;
-  provider?: string;
-}
+
 
 export default function Deployments() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -50,17 +41,12 @@ export default function Deployments() {
 
   // Load deployments immediately from localStorage (synchronous)
   useEffect(() => {
-    // Use requestAnimationFrame to ensure this runs after the initial render
     const loadData = () => {
       try {
-        const stored = localStorage.getItem('deployify-deployments');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const validDeployments = Array.isArray(parsed) ? parsed.filter(d => d && d.id && d.gitUrl) : [];
-          setDeployments(validDeployments);
-        }
+        const storedDeployments = deploymentStorage.getDeployments();
+        setDeployments(storedDeployments);
       } catch (err) {
-        console.error('Error loading deployments from localStorage:', err);
+        console.error('Error loading deployments:', err);
       }
       setIsInitialized(true);
     };
@@ -69,6 +55,19 @@ export default function Deployments() {
     const timer = setTimeout(loadData, 0);
     return () => clearTimeout(timer);
   }, []);
+
+  // Refresh deployments when the page becomes visible (to catch deployments from other pages)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isInitialized) {
+        const storedDeployments = deploymentStorage.getDeployments();
+        setDeployments(storedDeployments);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isInitialized]);
 
   // Check backend health separately (asynchronous)
   useEffect(() => {
@@ -105,45 +104,25 @@ export default function Deployments() {
   const handleDeploymentSuccess = (deploymentData: any) => {
     console.log('Received deployment data:', deploymentData);
     
-    const newDeployment: Deployment = {
-      id: deploymentData.deploymentId,
-      gitUrl: deploymentData.gitUrl || 'Unknown',
-      siteName: deploymentData.siteName || deploymentData.provider,
-      netlifyUrl: deploymentData.siteUrl,
-      deployUrl: deploymentData.siteUrl,
-      status: deploymentData.status === 'created' ? 'success' : 'deploying',
-      createdAt: new Date().toISOString(),
-      provider: deploymentData.provider
-    };
-
+    const newDeployment = deploymentStorage.addDeployment(deploymentData);
     console.log('Created deployment object:', newDeployment);
 
-    setDeployments(prevDeployments => {
-      const updatedDeployments = [newDeployment, ...prevDeployments];
-      // Save to localStorage
-      try {
-        localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
-      } catch (err) {
-        console.error('Failed to save to localStorage:', err);
-      }
-      return updatedDeployments;
-    });
+    // Update local state
+    setDeployments(prevDeployments => [newDeployment, ...prevDeployments]);
     
     setIsCreateModalOpen(false);
-    toast.success('Deployment added to history!');
+    
+    const providerEmoji = deploymentData.provider === 'docker' ? '🐳' : 
+                         deploymentData.provider === 'aws' ? '☁️' : 
+                         deploymentData.provider === 'vercel' ? '▲' : '🌐';
+    
+    toast.success(`${providerEmoji} Deployment added to history!`);
   };
 
   // Handle delete deployment
   const handleDeleteDeployment = (id: string) => {
-    setDeployments(prevDeployments => {
-      const updatedDeployments = prevDeployments.filter(d => d.id !== id);
-      try {
-        localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
-      } catch (err) {
-        console.error('Failed to save to localStorage:', err);
-      }
-      return updatedDeployments;
-    });
+    deploymentStorage.removeDeployment(id);
+    setDeployments(prevDeployments => prevDeployments.filter(d => d.id !== id));
     toast.success('Deployment removed');
   };
 
@@ -163,6 +142,8 @@ export default function Deployments() {
     switch (status) {
       case 'success':
         return <CheckCircle className="h-4 w-4 text-green-400" />;
+      case 'running':
+        return <CheckCircle className="h-4 w-4 text-blue-400 animate-pulse" />;
       case 'failed':
         return <AlertCircle className="h-4 w-4 text-red-400" />;
       case 'deploying':
@@ -176,6 +157,8 @@ export default function Deployments() {
     switch (status) {
       case 'success':
         return 'text-green-400 bg-green-400/10 border-green-400/20';
+      case 'running':
+        return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
       case 'failed':
         return 'text-red-400 bg-red-400/10 border-red-400/20';
       case 'deploying':
@@ -230,6 +213,18 @@ export default function Deployments() {
             <p className="text-gray-400">Manage and monitor your deployments</p>
           </div>
           <div className="flex gap-3">
+            <Button
+              onClick={() => {
+                const storedDeployments = deploymentStorage.getDeployments();
+                setDeployments(storedDeployments);
+                toast.success('Deployments refreshed');
+              }}
+              variant="outline"
+              className="border-white/20 text-white hover:bg-white/10 gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
             <Button
               onClick={() => setIsLogsModalOpen(true)}
               variant="outline"

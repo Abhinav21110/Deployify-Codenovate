@@ -7,6 +7,7 @@ import { Rocket, Plus } from 'lucide-react';
 import { EnhancedDeployModal } from '@/components/EnhancedDeployModal';
 import { DeploymentLogs } from '@/components/DeploymentLogs';
 import { FeedbackModal } from '@/components/FeedbackModal';
+import { deploymentStorage } from '@/lib/deploymentStorage';
 import { toast } from 'sonner';
 
 export default function Features() {
@@ -124,12 +125,20 @@ export default function Features() {
           setLogsVisible(true);
           setIsDeployModalOpen(false);
           
+          // Save deployment to storage for Deployments page
+          const savedDeployment = deploymentStorage.addDeployment(deploymentData);
+          console.log('Deployment saved to storage:', savedDeployment);
+          
           // Show toast notification with deployment info
-          toast.success(`🚀 Deployment completed! ID: ${deploymentData.deploymentId.slice(0, 8)}...`, {
-            description: "Your project has been successfully deployed!",
+          const providerEmoji = deploymentData.provider === 'docker' ? '🐳' : 
+                               deploymentData.provider === 'aws' ? '☁️' : 
+                               deploymentData.provider === 'vercel' ? '▲' : '🌐';
+          
+          toast.success(`${providerEmoji} Deployment completed! ID: ${deploymentData.deploymentId.slice(0, 8)}...`, {
+            description: `Your project has been successfully deployed${deploymentData.provider === 'docker' ? ' locally' : ''}!`,
             duration: 5000,
             action: deploymentData.siteUrl ? {
-              label: 'View Site',
+              label: deploymentData.provider === 'docker' ? 'Open App' : 'View Site',
               onClick: () => window.open(deploymentData.siteUrl, '_blank'),
             } : undefined,
           });
