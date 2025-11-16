@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { useBlurReveal } from '@/hooks/useBlurReveal';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,14 +22,14 @@ interface Deployment {
 }
 
 export default function Deployments() {
-  useBlurReveal();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Check backend health
   const checkBackendHealth = async () => {
@@ -47,39 +46,60 @@ export default function Deployments() {
     }
   };
 
-  // Load deployments from localStorage
-  const loadDeployments = () => {
-    try {
-      const stored = localStorage.getItem('deployify-deployments');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Filter out invalid deployments
-        const validDeployments = Array.isArray(parsed) ? parsed.filter(d => d && d.id && d.gitUrl) : [];
-        setDeployments(validDeployments);
-      }
-      setIsLoading(false);
-      setError(null);
-    } catch (err) {
-      console.error('Error loading deployments:', err);
-      setError('Failed to load deployments');
-      setIsLoading(false);
-    }
-  };
 
-  // Check backend and load deployments on mount
+
+  // Load deployments immediately from localStorage (synchronous)
   useEffect(() => {
-    const init = async () => {
-      const isHealthy = await checkBackendHealth();
-      if (!isHealthy) {
-        setError('Backend is not running. Please start the backend server.');
-        setIsLoading(false);
-        return;
+    // Use requestAnimationFrame to ensure this runs after the initial render
+    const loadData = () => {
+      try {
+        const stored = localStorage.getItem('deployify-deployments');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const validDeployments = Array.isArray(parsed) ? parsed.filter(d => d && d.id && d.gitUrl) : [];
+          setDeployments(validDeployments);
+        }
+      } catch (err) {
+        console.error('Error loading deployments from localStorage:', err);
       }
-      loadDeployments();
+      setIsInitialized(true);
+    };
+
+    // Use a small timeout to prevent any potential flickering
+    const timer = setTimeout(loadData, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Check backend health separately (asynchronous)
+  useEffect(() => {
+    if (!isInitialized) return;
+    
+    let isMounted = true;
+    
+    const checkHealth = async () => {
+      try {
+        const isHealthy = await checkBackendHealth();
+        if (isMounted) {
+          if (!isHealthy) {
+            setError('Backend is not running. Please start the backend server.');
+          } else {
+            setError(null);
+          }
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.error('Error checking backend health:', err);
+          setError('Failed to connect to backend');
+        }
+      }
     };
     
-    init();
-  }, []);
+    checkHealth();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [isInitialized]);
 
   // Handle successful deployment
   const handleDeploymentSuccess = (deploymentData: any) => {
@@ -98,11 +118,16 @@ export default function Deployments() {
 
     console.log('Created deployment object:', newDeployment);
 
-    const updatedDeployments = [newDeployment, ...deployments];
-    setDeployments(updatedDeployments);
-    
-    // Save to localStorage
-    localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
+    setDeployments(prevDeployments => {
+      const updatedDeployments = [newDeployment, ...prevDeployments];
+      // Save to localStorage
+      try {
+        localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
+      } catch (err) {
+        console.error('Failed to save to localStorage:', err);
+      }
+      return updatedDeployments;
+    });
     
     setIsCreateModalOpen(false);
     toast.success('Deployment added to history!');
@@ -110,18 +135,29 @@ export default function Deployments() {
 
   // Handle delete deployment
   const handleDeleteDeployment = (id: string) => {
-    const updatedDeployments = deployments.filter(d => d.id !== id);
-    setDeployments(updatedDeployments);
-    localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
+    setDeployments(prevDeployments => {
+      const updatedDeployments = prevDeployments.filter(d => d.id !== id);
+      try {
+        localStorage.setItem('deployify-deployments', JSON.stringify(updatedDeployments));
+      } catch (err) {
+        console.error('Failed to save to localStorage:', err);
+      }
+      return updatedDeployments;
+    });
     toast.success('Deployment removed');
   };
 
-  // Filter deployments based on search
-  const filteredDeployments = deployments.filter(deployment => 
-    deployment.gitUrl?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    deployment.siteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    deployment.id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter deployments based on search (memoized to prevent unnecessary recalculations)
+  const filteredDeployments = useMemo(() => {
+    if (!searchTerm.trim()) return deployments;
+    
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return deployments.filter(deployment => 
+      deployment.gitUrl?.toLowerCase().includes(lowerSearchTerm) ||
+      deployment.siteName?.toLowerCase().includes(lowerSearchTerm) ||
+      deployment.id?.toLowerCase().includes(lowerSearchTerm)
+    );
+  }, [deployments, searchTerm]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -149,12 +185,13 @@ export default function Deployments() {
     }
   };
 
-  if (isLoading) {
+  if (!isInitialized) {
     return (
       <div className="min-h-screen text-white pb-32 px-4">
         <div className="max-w-7xl mx-auto pt-20">
-          <div className="flex items-center justify-center">
-            <RefreshCw className="h-8 w-8 animate-spin text-indigo-400" />
+          <div className="flex flex-col items-center justify-center py-20">
+            <RefreshCw className="h-8 w-8 animate-spin text-indigo-400 mb-4" />
+            <p className="text-gray-400">Loading deployments...</p>
           </div>
         </div>
       </div>
@@ -182,7 +219,7 @@ export default function Deployments() {
   }
 
   return (
-    <div className="min-h-screen text-white pb-32 px-4">
+    <div className="min-h-screen text-white pb-32 px-4 animate-in fade-in duration-300">
       <div className="max-w-7xl mx-auto pt-20">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
