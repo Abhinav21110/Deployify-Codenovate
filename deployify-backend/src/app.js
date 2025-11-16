@@ -65,6 +65,47 @@ app.post('/api/deploy', deployController.deploy);
 app.get('/api/deploy/status/:id', deployController.getStatus);
 app.get('/api/deploy/logs/:id', deployController.getLogs);
 app.post('/api/deploy/container/:id', deployController.manageContainer);
+app.post('/api/feedback', deployController.submitFeedback);
+
+// Feedback analytics endpoint (for admin/debugging)
+app.get('/api/feedback/analytics', (req, res) => {
+  const { feedbackStore } = require('./controllers/deployController');
+  
+  if (feedbackStore.length === 0) {
+    return res.json({ 
+      totalFeedback: 0,
+      averageRating: 0,
+      ratingDistribution: {},
+      recentFeedback: []
+    });
+  }
+  
+  const totalFeedback = feedbackStore.length;
+  const averageRating = feedbackStore.reduce((sum, f) => sum + f.rating, 0) / totalFeedback;
+  
+  const ratingDistribution = feedbackStore.reduce((dist, f) => {
+    dist[f.rating] = (dist[f.rating] || 0) + 1;
+    return dist;
+  }, {});
+  
+  const recentFeedback = feedbackStore
+    .slice(-10)
+    .map(f => ({
+      id: f.id,
+      rating: f.rating,
+      category: f.category,
+      provider: f.provider,
+      timestamp: f.timestamp,
+      feedback: f.feedback.substring(0, 100) + (f.feedback.length > 100 ? '...' : '')
+    }));
+  
+  res.json({
+    totalFeedback,
+    averageRating: Math.round(averageRating * 100) / 100,
+    ratingDistribution,
+    recentFeedback
+  });
+});
 
 // Logs endpoint
 app.get('/api/logs', (req, res) => {

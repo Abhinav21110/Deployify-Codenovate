@@ -375,9 +375,11 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
                   </div>
                 </div>
               </Card>
+            </>
+          )}
 
-              {/* AI Analysis Results */}
-              {summaryResult?.aiAnalysis && (
+          {/* AI Analysis Results - Show independently of inspection */}
+          {summaryResult?.aiAnalysis && (
                 <Card className="p-4 bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-400/30">
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 mb-3">
@@ -476,8 +478,6 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
                   </div>
                 </Card>
               )}
-            </>
-          )}
 
             {/* Provider Selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">

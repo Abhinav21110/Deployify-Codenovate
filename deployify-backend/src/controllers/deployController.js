@@ -481,4 +481,202 @@ async function manageContainer(req, res) {
   }
 }
 
-module.exports = { deploy, getStatus, getLogs, manageContainer };
+// Simple in-memory feedback storage
+const feedbackStore = [];
+
+async function submitFeedback(req, res) {
+  const { 
+    deploymentId, 
+    provider, 
+    rating, 
+    feedback, 
+    category, 
+    siteUrl, 
+    gitUrl 
+  } = req.body;
+
+  if (!deploymentId || !rating || !feedback) {
+    return res.status(400).json({ 
+      error: 'deploymentId, rating, and feedback are required' 
+    });
+  }
+
+  if (rating < 1 || rating > 5) {
+    return res.status(400).json({ 
+      error: 'rating must be between 1 and 5' 
+    });
+  }
+
+  try {
+    const feedbackData = {
+      id: uuidv4(),
+      deploymentId,
+      provider,
+      rating,
+      feedback: feedback.trim(),
+      category: category || 'general',
+      siteUrl,
+      gitUrl,
+      timestamp: new Date().toISOString(),
+      userAgent: req.headers['user-agent'] || 'unknown'
+    };
+
+    // Store feedback (in a real app, this would go to a database)
+    feedbackStore.push(feedbackData);
+    
+    // Keep only last 1000 feedback entries
+    if (feedbackStore.length > 1000) {
+      feedbackStore.shift();
+    }
+
+    console.log(`Feedback received for deployment ${deploymentId}: ${rating}/5 stars - ${category}`);
+    console.log(`Feedback: ${feedback.substring(0, 100)}${feedback.length > 100 ? '...' : ''}`);
+
+    res.json({
+      success: true,
+      feedbackId: feedbackData.id,
+      message: 'Thank you for your feedback!'
+    });
+
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    res.status(500).json({ error: 'Failed to submit feedback' });
+  }
+}
+
+async function summarize(req, res) {
+  const { repoUrl, branch = 'main' } = req.body;
+
+  if (!repoUrl) {
+    return res.status(400).json({ error: 'repoUrl is required' });
+  }
+
+  let clonePath = null;
+
+  try {
+    // Clone repo
+    clonePath = await cloneRepo(repoUrl, branch);
+    
+    // Read package.json if it exists
+    const packageJsonPath = path.join(clonePath, 'package.json');
+    let packageJson = null;
+    let techStack = {
+      framework: 'Unknown',
+      language: 'Unknown',
+      buildTool: 'Unknown',
+      packageManager: 'npm'
+    };
+    
+    if (await fs.pathExists(packageJsonPath)) {
+      packageJson = await fs.readJson(packageJsonPath);
+      
+      // Analyze tech stack from dependencies
+      const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+      
+      // Detect framework
+      if (deps.react) techStack.framework = 'React';
+      else if (deps.vue) techStack.framework = 'Vue.js';
+      else if (deps.angular) techStack.framework = 'Angular';
+      else if (deps.next) techStack.framework = 'Next.js';
+      else if (deps.nuxt) techStack.framework = 'Nuxt.js';
+      else if (deps.svelte) techStack.framework = 'Svelte';
+      else if (deps.express) techStack.framework = 'Express.js';
+      
+      // Detect language
+      if (deps.typescript || packageJson.devDependencies?.typescript) techStack.language = 'TypeScript';
+      else techStack.language = 'JavaScript';
+      
+      // Detect build tool
+      if (deps.vite) techStack.buildTool = 'Vite';
+      else if (deps.webpack) techStack.buildTool = 'Webpack';
+      else if (deps.parcel) techStack.buildTool = 'Parcel';
+      else if (packageJson.scripts?.build) techStack.buildTool = 'npm scripts';
+      
+      // Detect package manager
+      if (await fs.pathExists(path.join(clonePath, 'yarn.lock'))) techStack.packageManager = 'yarn';
+      else if (await fs.pathExists(path.join(clonePath, 'pnpm-lock.yaml'))) techStack.packageManager = 'pnpm';
+    }
+    
+    // Read README if it exists
+    let readmeContent = '';
+    const readmePaths = ['README.md', 'readme.md', 'README.txt', 'readme.txt'];
+    for (const readmePath of readmePaths) {
+      const fullPath = path.join(clonePath, readmePath);
+      if (await fs.pathExists(fullPath)) {
+        readmeContent = await fs.readFile(fullPath, 'utf8');
+        break;
+      }
+    }
+    
+    // Generate AI analysis
+    const aiAnalysis = {
+      projectOverview: readmeContent ? 
+        `This appears to be a ${techStack.framework} project${readmeContent.length > 100 ? ' with detailed documentation' : ''}. ${readmeContent.substring(0, 200)}${readmeContent.length > 200 ? '...' : ''}` :
+        `This is a ${techStack.framework} project built with ${techStack.language}.`,
+      
+      techStack,
+      
+      buildCommand: packageJson?.scripts?.build || 'npm run build',
+      outputDirectory: techStack.framework === 'Next.js' ? 'out' : 
+                      techStack.buildTool === 'Vite' ? 'dist' : 'build',
+      
+      estimatedBuildTime: techStack.framework === 'Next.js' ? '2-4 minutes' :
+                         techStack.framework === 'React' ? '1-3 minutes' :
+                         '1-2 minutes',
+      
+      deploymentRecommendations: {
+        bestProvider: techStack.framework === 'Next.js' ? 'vercel' :
+                     techStack.framework === 'React' ? 'netlify' :
+                     'netlify',
+        deployMode: packageJson ? 'git-import' : 'drag-drop',
+        reasons: [
+          `${techStack.framework} works well with the recommended provider`,
+          packageJson ? 'Project has build scripts for automatic building' : 'Static files can be deployed directly',
+          `${techStack.buildTool} is supported by most providers`
+        ]
+      },
+      
+      potentialIssues: []
+    };
+    
+    // Add potential issues based on analysis
+    if (!packageJson) {
+      aiAnalysis.potentialIssues.push('No package.json found - may need manual configuration');
+    }
+    if (techStack.framework === 'Unknown') {
+      aiAnalysis.potentialIssues.push('Framework not detected - deployment may require manual setup');
+    }
+    if (!packageJson?.scripts?.build && techStack.framework !== 'Unknown') {
+      aiAnalysis.potentialIssues.push('No build script found - may need to configure build command');
+    }
+
+    res.json({
+      repoUrl,
+      branch,
+      packageJson: packageJson ? {
+        name: packageJson.name,
+        version: packageJson.version,
+        scripts: packageJson.scripts,
+        dependencies: Object.keys(packageJson.dependencies || {}),
+        devDependencies: Object.keys(packageJson.devDependencies || {})
+      } : null,
+      readmeLength: readmeContent.length,
+      aiAnalysis,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Summarization error:', error);
+    res.status(500).json({ 
+      error: error.message,
+      aiError: 'Failed to analyze repository structure'
+    });
+  } finally {
+    // Cleanup
+    if (clonePath) {
+      await cleanupRepo(clonePath);
+    }
+  }
+}
+
+module.exports = { deploy, getStatus, getLogs, manageContainer, submitFeedback, feedbackStore };

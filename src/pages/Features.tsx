@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Rocket, Plus } from 'lucide-react';
 import { EnhancedDeployModal } from '@/components/EnhancedDeployModal';
 import { DeploymentLogs } from '@/components/DeploymentLogs';
+import { FeedbackModal } from '@/components/FeedbackModal';
 import { toast } from 'sonner';
 
 export default function Features() {
@@ -15,12 +16,15 @@ export default function Features() {
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
   const [logsVisible, setLogsVisible] = useState(false);
   const [deploymentSiteUrl, setDeploymentSiteUrl] = useState<string | null>(null);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [currentDeploymentData, setCurrentDeploymentData] = useState<any>(null);
 
 
 
   const providers = [
     { id: 'netlify', name: 'Netlify', icon: '🌐', description: 'Static sites and JAMstack' },
     { id: 'vercel', name: 'Vercel', icon: '▲', description: 'Next.js and React apps' },
+    { id: 'aws', name: 'AWS S3', icon: '☁️', description: 'Scalable cloud hosting' },
     { id: 'docker', name: 'Docker', icon: '🐳', description: 'Local full-stack containers' },
   ];
 
@@ -89,7 +93,7 @@ export default function Features() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {providers.map((provider, index) => (
               <div
                 key={provider.id}
@@ -116,8 +120,10 @@ export default function Features() {
         onSuccess={(deploymentData) => {
           setSelectedDeployment(deploymentData.deploymentId);
           setDeploymentSiteUrl(deploymentData.siteUrl);
+          setCurrentDeploymentData(deploymentData);
           setLogsVisible(true);
           setIsDeployModalOpen(false);
+          
           // Show toast notification with deployment info
           toast.success(`🚀 Deployment completed! ID: ${deploymentData.deploymentId.slice(0, 8)}...`, {
             description: "Your project has been successfully deployed!",
@@ -127,6 +133,11 @@ export default function Features() {
               onClick: () => window.open(deploymentData.siteUrl, '_blank'),
             } : undefined,
           });
+
+          // Show feedback modal after a short delay
+          setTimeout(() => {
+            setFeedbackModalOpen(true);
+          }, 3000);
         }}
       />
 
@@ -138,6 +149,15 @@ export default function Features() {
           isVisible={logsVisible}
           onClose={() => setLogsVisible(false)}
           siteUrl={deploymentSiteUrl || undefined}
+        />
+      )}
+
+      {/* Feedback Modal */}
+      {currentDeploymentData && (
+        <FeedbackModal
+          isOpen={feedbackModalOpen}
+          onClose={() => setFeedbackModalOpen(false)}
+          deploymentData={currentDeploymentData}
         />
       )}
     </div>
