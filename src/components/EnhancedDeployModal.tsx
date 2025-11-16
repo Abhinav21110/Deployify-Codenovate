@@ -162,6 +162,15 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
             onClick: () => window.open(siteUrl, '_blank'),
           } : undefined,
         });
+      } else if (data.provider === 'aws') {
+        toast.success('☁️ AWS S3 deployment successful!', {
+          description: `Your site is live on AWS S3: ${siteUrl}`,
+          duration: 15000,
+          action: siteUrl ? {
+            label: 'Open Site',
+            onClick: () => window.open(siteUrl, '_blank'),
+          } : undefined,
+        });
       } else {
         toast.success('🎉 Deployment completed!', {
           description: siteUrl ? `Your site is live at: ${siteUrl}` : 'Deployment created successfully',
@@ -307,6 +316,7 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
                   <SelectContent>
                     <SelectItem value="netlify">Netlify</SelectItem>
                     <SelectItem value="vercel">Vercel</SelectItem>
+                    <SelectItem value="aws">AWS S3</SelectItem>
                     <SelectItem value="docker">Docker (Local)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -369,6 +379,24 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
                     <li>• Runs locally on your machine (requires Docker installed)</li>
                     <li>• Full-stack application in one container</li>
                     <li>• Accessible at http://localhost:PORT</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* AWS Info */}
+          {provider === 'aws' && (
+            <Card className="p-4 bg-orange-500/10 border-orange-400/30">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">☁️</div>
+                <div>
+                  <p className="font-medium text-orange-100 mb-1">AWS S3 Static Hosting</p>
+                  <ul className="text-sm text-orange-200/70 space-y-1">
+                    <li>• Deploys static websites to Amazon S3</li>
+                    <li>• Automatic bucket creation and configuration</li>
+                    <li>• Public website hosting with S3 URLs</li>
+                    <li>• Perfect for SPAs and static sites</li>
                   </ul>
                 </div>
               </div>
@@ -453,10 +481,10 @@ export function EnhancedDeployModal({ isOpen, onClose, onSuccess }: EnhancedDepl
               ) : (
                 <>
                   <span className="hidden sm:inline">
-                    {`Deploy ${provider === 'docker' ? 'with Docker' : `to ${provider === 'netlify' ? 'Netlify' : 'Vercel'}`}`}
+                    {`Deploy ${provider === 'docker' ? 'with Docker' : provider === 'aws' ? 'to AWS S3' : `to ${provider === 'netlify' ? 'Netlify' : 'Vercel'}`}`}
                   </span>
                   <span className="sm:hidden">
-                    {provider === 'docker' ? 'Docker' : provider === 'netlify' ? 'Netlify' : 'Vercel'}
+                    {provider === 'docker' ? 'Docker' : provider === 'aws' ? 'AWS' : provider === 'netlify' ? 'Netlify' : 'Vercel'}
                   </span>
                 </>
               )}

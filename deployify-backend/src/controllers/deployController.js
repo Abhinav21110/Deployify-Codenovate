@@ -3,6 +3,7 @@ const { zipFolder } = require('../utils/zip');
 const netlify = require('../providers/netlify');
 const vercel = require('../providers/vercel');
 const docker = require('../providers/docker');
+const aws = require('../providers/aws.js');
 const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -115,8 +116,8 @@ async function deploy(req, res) {
     });
   }
 
-  if (!['netlify', 'vercel', 'docker'].includes(provider)) {
-    return res.status(400).json({ error: 'provider must be netlify, vercel, or docker' });
+  if (!['netlify', 'vercel', 'docker', 'aws'].includes(provider)) {
+    return res.status(400).json({ error: 'provider must be netlify, vercel, docker, or aws' });
   }
 
   if (!['drag-drop', 'git-import', 'docker-local'].includes(deployMode)) {
@@ -298,6 +299,87 @@ async function deploy(req, res) {
         imageName: result.imageName,
         port: result.port,
         note: 'Docker container is running locally'
+      });
+
+    } else if (provider === 'aws' && deployMode === 'drag-drop') {
+      // Deploy to AWS S3
+      const hasPackageJson = await fs.pathExists(path.join(clonePath, 'package.json'));
+      let buildPath = clonePath;
+
+      if (hasPackageJson) {
+        addDeploymentLog(deploymentId, 'info', 'Detected Node.js project, building...');
+        
+        // Build the project
+        buildPath = await buildProject(clonePath);
+        addDeploymentLog(deploymentId, 'info', `Build completed, using built files from: ${buildPath}`);
+      } else {
+        // Find existing build directory
+        let targetDir = buildDir;
+        if (!targetDir) {
+          const candidateFolders = ['build', 'dist', 'public'];
+          for (const folder of candidateFolders) {
+            const folderPath = path.join(clonePath, folder);
+            if (await fs.pathExists(folderPath)) {
+              targetDir = folder;
+              break;
+            }
+          }
+        }
+
+        if (!targetDir) {
+          return res.status(400).json({ 
+            error: 'No prebuilt folder found and no package.json to build. Expected build, dist, or public directory.' 
+          });
+        }
+
+        buildPath = path.join(clonePath, targetDir);
+        if (!(await fs.pathExists(buildPath))) {
+          return res.status(400).json({ 
+            error: `Build directory '${targetDir}' not found` 
+          });
+        }
+
+        addDeploymentLog(deploymentId, 'info', `Using existing build directory: ${targetDir}`);
+      }
+
+      // Check if there's an index.html file
+      const indexPath = path.join(buildPath, 'index.html');
+      if (!(await fs.pathExists(indexPath))) {
+        return res.status(400).json({ 
+          error: `No index.html found in build output. The build may have failed or this project type is not supported.` 
+        });
+      }
+
+      addDeploymentLog(deploymentId, 'info', 'Deploying to AWS S3...');
+      
+      // Get repo name from URL for project naming
+      const repoName = repoUrl.split('/').pop().replace('.git', '');
+      
+      const result = await aws.deployToAWS({
+        name: repoName,
+        path: clonePath,
+        outputPath: buildPath
+      }, null);
+
+      if (!result.ok) {
+        throw new Error(result.logs || 'AWS deployment failed');
+      }
+
+      addDeploymentLog(deploymentId, 'info', `AWS deployment successful: ${result.url}`);
+
+      deployments.set(deploymentId, {
+        provider: 'aws',
+        status: 'deployed',
+        result
+      });
+
+      res.json({
+        provider: 'aws',
+        site_url: result.url,
+        deploy_id: deploymentId,
+        status: 'deployed',
+        bucketName: result.bucketName,
+        region: result.region
       });
 
     } else {
